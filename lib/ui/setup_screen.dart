@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../logic/match_provider.dart';
 import '../models/match_config.dart';
+import '../logic/db_helper.dart';
 import 'match_screen.dart';
 import 'history_screen.dart';
 
@@ -13,14 +14,54 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
-  final List<TextEditingController> _controllers = [
-    TextEditingController(text: "A"),
-    TextEditingController(text: "B")
-  ];
-  
+  // Config
   int sets = 1;
   int legs = 1;
   int startScore = 501;
+
+  // Player Selection Logic
+  List<String> _roster = []; // All saved players
+  final List<String> _selectedPlayers = []; // Who is playing NOW
+  final TextEditingController _nameController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoster();
+  }
+
+  void _loadRoster() async {
+    final list = await DBHelper.getPlayers();
+    setState(() {
+      _roster = list;
+    });
+  }
+
+  void _addPlayerToRoster() async {
+    if (_nameController.text.isNotEmpty) {
+      await DBHelper.addPlayer(_nameController.text);
+      _nameController.clear();
+      _loadRoster();
+    }
+  }
+
+  void _deletePlayer(String name) async {
+    await DBHelper.deletePlayer(name);
+    setState(() {
+      _selectedPlayers.remove(name);
+    });
+    _loadRoster();
+  }
+
+  void _toggleSelection(String name) {
+    setState(() {
+      if (_selectedPlayers.contains(name)) {
+        _selectedPlayers.remove(name);
+      } else {
+        _selectedPlayers.add(name);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,84 +71,113 @@ class _SetupScreenState extends State<SetupScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
-            onPressed: () => Navigator.push(
-              context, 
-              MaterialPageRoute(builder: (c) => const HistoryScreen())
-            ),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HistoryScreen())),
           )
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionTitle("Game Rules"),
-            _buildScorePicker(),
-            const SizedBox(height: 10),
-            _buildCounter("Best of Sets", sets, (val) => setState(() => sets = val)),
-            _buildCounter("Legs per Set", legs, (val) => setState(() => legs = val)),
-            
-            const Divider(height: 40),
-            
-            _buildSectionTitle("Players"),
-            ..._controllers.asMap().entries.map((entry) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: TextField(
-                  controller: entry.value,
-                  decoration: InputDecoration(
-                    labelText: "Player ${entry.key + 1}",
-                    suffixIcon: _controllers.length > 1 
-                      ? IconButton(
-                          icon: const Icon(Icons.remove_circle_outline),
-                          onPressed: () => setState(() => _controllers.removeAt(entry.key)),
-                        )
-                      : null,
-                  ),
-                ),
-              );
-            }),
-            TextButton.icon(
-              onPressed: () => setState(() => _controllers.add(TextEditingController())),
-              icon: const Icon(Icons.add),
-              label: const Text("Add Player"),
+      body: Column(
+        children: [
+          // 1. GAME SETTINGS
+          Container(
+            padding: const EdgeInsets.all(20),
+            color: Colors.white.withOpacity(0.05),
+            child: Column(
+              children: [
+                _buildScorePicker(),
+                const SizedBox(height: 10),
+                _buildCounter("Sets", sets, (val) => setState(() => sets = val)),
+                _buildCounter("Legs", legs, (val) => setState(() => legs = val)),
+              ],
             ),
-            
-            const SizedBox(height: 40),
-            
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.greenAccent,
-                  foregroundColor: Colors.black,
-                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
+          ),
+
+          // 2. PLAYER ROSTER
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                const Text("Select Players", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                
+                // Add New Player Field
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _nameController,
+                        decoration: const InputDecoration(
+                          hintText: "Add friend's name",
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle, color: Colors.greenAccent),
+                      onPressed: _addPlayerToRoster,
+                    )
+                  ],
                 ),
-                onPressed: () {
-                  final config = MatchConfig(
-                    playerNames: _controllers.map((c) => c.text).toList(),
-                    setsToWin: sets,
-                    legsToWinSet: legs,
-                    startingScore: startScore,
+                const SizedBox(height: 20),
+
+                // Roster List
+                if (_roster.isEmpty) 
+                  const Text("No players saved. Add some friends!", style: TextStyle(color: Colors.grey)),
+
+                ..._roster.map((name) {
+                  final isSelected = _selectedPlayers.contains(name);
+                  return Card(
+                    color: isSelected ? Colors.greenAccent.withOpacity(0.2) : Colors.white10,
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      onTap: () => _toggleSelection(name),
+                      leading: Icon(
+                        isSelected ? Icons.check_box : Icons.check_box_outline_blank,
+                        color: isSelected ? Colors.greenAccent : Colors.grey,
+                      ),
+                      title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                        onPressed: () => _deletePlayer(name),
+                      ),
+                    ),
                   );
-                  Provider.of<MatchProvider>(context, listen: false).setupMatch(config);
-                  Navigator.push(context, MaterialPageRoute(builder: (c) => const MatchScreen()));
-                },
-                child: const Text("START MATCH"),
+                }),
+              ],
+            ),
+          ),
+
+          // 3. START BUTTON
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
+                  onPressed: () {
+                    if (_selectedPlayers.length < 1) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Select at least 1 player")));
+                      return;
+                    }
+
+                    final config = MatchConfig(
+                      playerNames: _selectedPlayers,
+                      setsToWin: sets,
+                      legsToWinSet: legs,
+                      startingScore: startScore,
+                    );
+                    Provider.of<MatchProvider>(context, listen: false).setupMatch(config);
+                    Navigator.push(context, MaterialPageRoute(builder: (c) => const MatchScreen()));
+                  },
+                  child: Text("START MATCH (${_selectedPlayers.length})", style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
     );
   }
 
@@ -115,12 +185,10 @@ class _SetupScreenState extends State<SetupScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text("Starting Points:", style: TextStyle(fontSize: 16)),
+        const Text("Start Score:", style: TextStyle(fontSize: 16)),
         DropdownButton<int>(
           value: startScore,
-          items: [101, 201, 301, 501].map((int val) {
-            return DropdownMenuItem<int>(value: val, child: Text("$val"));
-          }).toList(),
+          items: [101, 201, 301, 501].map((int val) => DropdownMenuItem(value: val, child: Text("$val"))).toList(),
           onChanged: (val) => setState(() => startScore = val!),
         ),
       ],

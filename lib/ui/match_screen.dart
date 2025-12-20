@@ -55,7 +55,10 @@ class MatchScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(p.name, style: TextStyle(fontSize: 18, color: isActive ? Colors.white : Colors.grey)),
-                  Text("Sets: ${p.setsWon} Legs: ${p.legsWon}", style: const TextStyle(color: Colors.amber, fontSize: 12)),
+                  // LIVE AVERAGE DISPLAY
+                  Text("Avg: ${p.average.toStringAsFixed(1)}", 
+                      style: TextStyle(color: isActive ? Colors.amber : Colors.white24, fontSize: 14)),
+                  Text("Sets: ${p.setsWon} Legs: ${p.legsWon}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
                 ],
               ),
               Text("${p.currentScore}", style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.greenAccent)),

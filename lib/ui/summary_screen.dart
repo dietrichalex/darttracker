@@ -4,10 +4,19 @@ import 'setup_screen.dart';
 
 class SummaryScreen extends StatelessWidget {
   final List<Player> players;
-  const SummaryScreen({super.key, required this.players});
+  
+  // --- FIX: Add this variable and update the constructor ---
+  final List<String> legLog; 
+
+  const SummaryScreen({
+    super.key, 
+    required this.players,
+    this.legLog = const [], // Default to empty list if not provided
+  });
 
   @override
   Widget build(BuildContext context) {
+    // Determine winner based on sets won
     final winner = players.reduce((a, b) => a.setsWon > b.setsWon ? a : b);
 
     return Scaffold(
@@ -17,40 +26,106 @@ class SummaryScreen extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 20),
-            Text("WINNER: ${winner.name}", style: const TextStyle(fontSize: 28, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+            const Icon(Icons.emoji_events, size: 80, color: Colors.amber),
+            const SizedBox(height: 10),
+            Text("WINNER: ${winner.name}", 
+              style: const TextStyle(fontSize: 28, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
             
-            // STATS TABLE
+            // --- 1. OVERALL MATCH STATISTICS ---
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                columnSpacing: 25,
+                columnSpacing: 20,
                 headingRowColor: MaterialStateProperty.all(Colors.white10),
                 columns: [
-                  const DataColumn(label: Text("Stat")),
+                  const DataColumn(label: Text("Stat", style: TextStyle(fontWeight: FontWeight.bold))),
                   ...players.map((p) => DataColumn(label: Text(p.name, style: const TextStyle(color: Colors.amber)))),
                 ],
                 rows: [
                   _buildRow("3-Dart Avg", players.map((p) => p.average.toStringAsFixed(1)).toList()),
                   _buildRow("Checkout %", players.map((p) => "${p.checkoutPercentage.toStringAsFixed(1)}%").toList()),
+                  _buildRow("Total Legs", players.map((p) => "${p.totalLegsWon}").toList()),
                   _buildRow("100+", players.map((p) => "${p.countScore(100, 140)}").toList()),
                   _buildRow("140+", players.map((p) => "${p.countScore(140, 180)}").toList()),
                   _buildRow("180s", players.map((p) => "${p.countScore(180)}").toList()),
-                  _buildRow("Highest Out", players.map((p) => "TBD").toList()), // Optional: track highest finish
                 ],
               ),
             ),
 
-            const SizedBox(height: 40),
-            _buildLegHistory(),
+            const SizedBox(height: 30),
+            const Divider(color: Colors.white24),
+            const Text("Per-Leg Analysis", style: TextStyle(fontSize: 18, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+
+            // --- 2. DETAILED LEG HISTORY (Using legLog & LegStat) ---
+            if (players.isNotEmpty && players[0].legStats.isNotEmpty)
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: players[0].legStats.length,
+                itemBuilder: (context, i) {
+                  return Card(
+                    color: Colors.white10,
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: ExpansionTile(
+                      leading: Text("Leg ${i + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                      title: Text(
+                        // If legLog has data, use it, otherwise generic text
+                        i < legLog.length ? legLog[i].replaceAll("Leg ${i+1}: ", "") : "Detail",
+                        style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: players.map((p) {
+                              // Guard against index range errors
+                              if (i >= p.legStats.length) return const SizedBox();
+                              final stats = p.legStats[i];
+                              return Column(
+                                children: [
+                                  Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amber)),
+                                  Text("Avg: ${stats.average.toStringAsFixed(1)}", style: const TextStyle(color: Colors.white)),
+                                  Text("Darts: ${stats.dartsThrown}", style: const TextStyle(color: Colors.grey)),
+                                  if (stats.won) 
+                                    const Text("WINNER", style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        )
+                      ],
+                    ),
+                  );
+                },
+              )
+            else 
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text("No leg details recorded.", style: TextStyle(color: Colors.grey)),
+              ),
             
+            const SizedBox(height: 40),
+
+            // --- 3. NAVIGATION BUTTON ---
             Padding(
               padding: const EdgeInsets.all(30.0),
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
-                onPressed: () => Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (c) => const SetupScreen()), (route) => false),
-                child: const Text("NEW MATCH"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.greenAccent, 
+                  foregroundColor: Colors.black, 
+                  minimumSize: const Size(double.infinity, 50)
+                ),
+                onPressed: () {
+                  // Navigate safely back to setup
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (c) => const SetupScreen()), 
+                    (route) => false
+                  );
+                },
+                child: const Text("START NEW MATCH", style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -61,19 +136,8 @@ class SummaryScreen extends StatelessWidget {
 
   DataRow _buildRow(String label, List<String> values) {
     return DataRow(cells: [
-      DataCell(Text(label, style: const TextStyle(fontWeight: FontWeight.bold))),
-      ...values.map((v) => DataCell(Text(v))),
+      DataCell(Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
+      ...values.map((v) => DataCell(Text(v, style: const TextStyle(color: Colors.white70)))),
     ]);
-  }
-
-  Widget _buildLegHistory() {
-    return Column(
-      children: [
-        const Text("Match Flow", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 10),
-        // This is where you'd map through a list of who won which leg
-        // e.g., "Leg 1: Player 1 (14 Darts)"
-      ],
-    );
   }
 }
