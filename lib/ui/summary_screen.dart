@@ -47,7 +47,8 @@ class SummaryScreen extends StatelessWidget {
             ),
             
             const SizedBox(height: 30),
-            const Text("Per-Leg Analysis", style: TextStyle(fontSize: 18, color: Colors.greenAccent)),
+            const Text("Per-Leg Analysis", style: TextStyle(fontSize: 18, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
             
             // PER LEG LIST
             if (players.isNotEmpty && players[0].legStats.isNotEmpty)
@@ -64,17 +65,21 @@ class SummaryScreen extends StatelessWidget {
                       title: Text(i < legLog.length ? legLog[i].replaceAll("Leg ${i+1}: ", "") : ""),
                       children: [
                         Padding(
-                          padding: const EdgeInsets.all(16.0),
+                          padding: const EdgeInsets.all(12.0),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: players.map((p) {
                               if (i >= p.legStats.length) return const SizedBox();
                               final stats = p.legStats[i];
                               return Column(
                                 children: [
-                                  Text(p.name, style: const TextStyle(color: Colors.amber)),
+                                  Text(p.name, style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 4),
                                   Text("Avg: ${stats.average.toStringAsFixed(1)}", style: const TextStyle(color: Colors.white)),
                                   Text("1st 9: ${stats.firstNineAvg.toStringAsFixed(1)}", style: const TextStyle(color: Colors.grey)),
+                                  Text("CO: ${stats.checkoutPercent.toStringAsFixed(0)}%", style: const TextStyle(color: Colors.grey)),
+                                  const SizedBox(height: 4),
                                   if (stats.won) const Text("WINNER", style: TextStyle(color: Colors.greenAccent, fontSize: 10)),
                                 ],
                               );

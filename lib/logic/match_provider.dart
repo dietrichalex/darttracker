@@ -36,15 +36,9 @@ class MatchProvider with ChangeNotifier {
   Player get activePlayer => players[currentPlayerIndex];
 
   List<DartThrow> get currentTurnDarts {
-    // Only show darts from the CURRENT LEG and CURRENT PLAYER
     if (activePlayer.history.isEmpty || currentDartCount == 0) return [];
-    
-    // We take the last 'currentDartCount' throws
-    // But we doubly ensure they belong to the current leg
     var recent = activePlayer.history.reversed.take(currentDartCount).toList();
-    if (recent.any((t) => t.legNumber != currentLegNumber)) {
-      return []; // Should not happen with correct logic, but safe fallback
-    }
+    if (recent.any((t) => t.legNumber != currentLegNumber)) return [];
     return recent.reversed.toList();
   }
 
@@ -57,28 +51,38 @@ class MatchProvider with ChangeNotifier {
     Player p = activePlayer;
     int scoreThisDart = val * multiplier;
     int scoreBefore = p.currentScore;
+    int scoreRemaining = scoreBefore - scoreThisDart;
 
-    // Checkout Stats Logic
-    bool isFinishable = CheckoutLogic.getRoute(scoreBefore) != "No Checkout";
-    if (val == 0 && isFinishable) p.checkoutAttempts++;
-    if (multiplier == 2 && (scoreBefore - scoreThisDart == 0)) p.checkoutAttempts++;
+    // --- CHECKOUT STATS LOGIC ---
+    // We check if the score was finishable with 3 darts (theoretical max) 
+    // to determine if a "0" counts as a missed double.
+    // We use '3' here because we are defining the "State of the board", not the user's current hand.
+    bool isFinishable = CheckoutLogic.getRecommendation(scoreBefore, 3).isNotEmpty;
+    
+    bool isZeroInput = (val == 0);
+    bool isBustOrWin = (scoreRemaining <= 1); 
 
-    // Create Throw Object with Leg Number
+    if (isFinishable) {
+       if (isZeroInput || isBustOrWin) {
+         p.checkoutAttempts++;
+       }
+    }
+
     final t = DartThrow(
       value: val, 
       multiplier: multiplier, 
       scoreBefore: scoreBefore, 
       playerId: currentPlayerIndex,
-      legNumber: currentLegNumber // Save Leg ID
+      legNumber: currentLegNumber
     );
 
-    if (scoreBefore - scoreThisDart == 0 && multiplier == 2) {
+    if (scoreRemaining == 0 && multiplier == 2) {
       // WIN
       p.history.add(t);
       globalHistory.add(t);
       await _finalizeLeg(p, context);
     } 
-    else if (scoreBefore - scoreThisDart <= 1) {
+    else if (scoreRemaining <= 1) {
       // BUST
       _endTurn(bust: true); 
     } 
@@ -106,14 +110,17 @@ class MatchProvider with ChangeNotifier {
     }
     currentLegNumber++;
 
+    // 1. CHECK SET WIN
     if (winner.legsWon >= config.legsNeededToWin) {
       winner.setsWon++;
-      for (var pl in players) pl.legsWon = 0; 
+      for (var pl in players) pl.legsWon = 0; // Reset legs for next set
     }
 
-    if (winner.setsWon >= config.setsToWin) {
+    // 2. CHECK MATCH WIN (Updated to use setsNeededToWin)
+    if (winner.setsWon >= config.setsNeededToWin) {
       await _saveAndExit(winner, context);
     } else {
+      // Setup next leg
       for (var pl in players) pl.currentScore = config.startingScore;
       currentDartCount = 0;
       currentPlayerIndex = (currentLegNumber - 1) % players.length;
@@ -134,6 +141,7 @@ class MatchProvider with ChangeNotifier {
             'name': p.name,
             'avg': stat.average.toStringAsFixed(1),
             'first9': stat.firstNineAvg.toStringAsFixed(1),
+            'co_percent': stat.checkoutPercent.toStringAsFixed(0),
             'darts': stat.dartsThrown,
             'won': stat.won
           });
@@ -159,52 +167,39 @@ class MatchProvider with ChangeNotifier {
 
   void undo() {
     if (globalHistory.isEmpty) return;
-
-    // SAFETY CHECK: Do not allow undoing if it belongs to a previous leg.
-    // This prevents breaking the game state (score resets, leg counts, etc.)
-    if (globalHistory.last.legNumber != currentLegNumber) {
-      debugPrint("Cannot undo past a leg finish.");
-      return; 
-    }
+    if (globalHistory.last.legNumber != currentLegNumber) return;
 
     final lastThrow = globalHistory.removeLast();
     
-    // Revert Checkout Stats
-    if (lastThrow.value == 0 && lastThrow.scoreBefore <= 170) {
-      players[lastThrow.playerId].checkoutAttempts--;
+    // REVERSE CHECKOUT STATS logic using the new method
+    bool wasFinishable = CheckoutLogic.getRecommendation(lastThrow.scoreBefore, 3).isNotEmpty;
+    bool wasZeroInput = (lastThrow.value == 0);
+    bool wasBustOrWin = ((lastThrow.scoreBefore - lastThrow.total) <= 1);
+
+    if (wasFinishable) {
+       if (wasZeroInput || wasBustOrWin) {
+         players[lastThrow.playerId].checkoutAttempts--;
+       }
     }
 
     currentPlayerIndex = lastThrow.playerId;
     players[currentPlayerIndex].currentScore = lastThrow.scoreBefore;
     players[currentPlayerIndex].history.removeLast();
     
-    // Recalculate Dart Count for UI
-    // We count how many darts the current player has thrown IN THIS LEG
     int count = 0;
     for (int i = globalHistory.length - 1; i >= 0; i--) {
-      // Stop if we hit a different player OR a different leg
       if (globalHistory[i].playerId == currentPlayerIndex && 
           globalHistory[i].legNumber == currentLegNumber) {
         count++;
         if (count == 3) break;
-      } else { 
-        break; 
-      }
+      } else { break; }
     }
-    
-    // Logic: If we found 2 previous darts in this turn, count is 2.
-    // However, if we just undid the 1st dart of a turn, count is 0.
-    // But what if we undid the 1st dart of a turn, and the PREVIOUS turn was also this player? 
-    // (e.g. bust logic or end of set).
-    // The "break" above handles player switch.
     currentDartCount = count % 3;
-    
     notifyListeners();
   }
 
   void _endTurn({bool bust = false}) {
     if (bust) {
-      // Revert score to start of turn state
       int dartsInThisVisit = currentDartCount + 1;
       if (activePlayer.history.length >= dartsInThisVisit) {
          var firstDart = activePlayer.history[activePlayer.history.length - dartsInThisVisit];

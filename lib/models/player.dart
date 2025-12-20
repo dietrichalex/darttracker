@@ -7,6 +7,7 @@ class LegStat {
   final int dartsThrown;
   final bool won;
   final double firstNineAvg; 
+  final int checkoutAttempts; // NEW: Attempts specific to this leg
 
   LegStat({
     required this.legIndex, 
@@ -14,7 +15,15 @@ class LegStat {
     required this.dartsThrown, 
     required this.won,
     required this.firstNineAvg,
+    required this.checkoutAttempts,
   });
+
+  // Helper to get % for this leg
+  double get checkoutPercent {
+    if (checkoutAttempts == 0) return 0.0;
+    // If you won, you hit 1 checkout. If you lost, you hit 0.
+    return (won ? 1 : 0) / checkoutAttempts * 100;
+  }
 }
 
 class Player {
@@ -45,7 +54,6 @@ class Player {
   }
 
   String get bestLeg {
-    // Find won legs, get min darts
     var wins = legStats.where((l) => l.won);
     if (wins.isEmpty) return "-";
     int minDarts = wins.map((l) => l.dartsThrown).reduce(min);
@@ -64,14 +72,18 @@ class Player {
     int totalPoints = legThrows.fold(0, (sum, t) => sum + t.total);
     double legAvg = legThrows.isEmpty ? 0.0 : (totalPoints / (legThrows.length / 3));
 
-    // Calculate First 9 Avg for this leg
+    // Calculate First 9 Avg
     double first9 = 0.0;
     if (legThrows.isNotEmpty) {
       int dartsToCount = min(9, legThrows.length);
       int first9Total = legThrows.take(dartsToCount).fold(0, (sum, t) => sum + t.total);
-      // If less than 9 darts, avg is based on what was thrown
       first9 = (first9Total / (dartsToCount / 3));
     }
+
+    // Calculate Checkout Attempts for THIS LEG only
+    // Logic: Total Attempts - Attempts recorded in previous legs
+    int previousLegAttempts = legStats.fold(0, (sum, l) => sum + l.checkoutAttempts);
+    int attemptsThisLeg = checkoutAttempts - previousLegAttempts;
 
     legStats.add(LegStat(
       legIndex: legIndex,
@@ -79,6 +91,7 @@ class Player {
       dartsThrown: legThrows.length,
       won: isWinner,
       firstNineAvg: first9,
+      checkoutAttempts: attemptsThisLeg, // NEW
     ));
     
     _historyIndexAtLegStart = history.length; 
@@ -86,7 +99,6 @@ class Player {
 
   int countScore(int min, [int? max]) {
     int count = 0;
-    // Iterate 3 darts at a time
     for (int i = 0; i <= history.length - 3; i += 3) {
       int visitTotal = history[i].total + history[i+1].total + history[i+2].total;
       if (max != null) {

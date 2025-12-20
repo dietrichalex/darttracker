@@ -131,10 +131,17 @@ class MatchScreen extends StatelessWidget {
     return "$prefix${t.value}";
   }
 
-  Widget _buildCheckoutPanel(MatchProvider match) {
+ Widget _buildCheckoutPanel(MatchProvider match) {
     final int score = match.activePlayer.currentScore;
-    final String route = CheckoutLogic.getRoute(score);
-    if (route.isEmpty || route == "No Checkout") return const SizedBox(height: 50);
+    
+    // CALCULATE DARTS REMAINING IN THIS TURN
+    int dartsRemaining = 3 - match.currentDartCount;
+    
+    // Get recommendation based on ACTUAL darts left
+    final String route = CheckoutLogic.getRecommendation(score, dartsRemaining);
+
+    if (route.isEmpty) return const SizedBox(height: 50);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
@@ -142,7 +149,14 @@ class MatchScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(30),
         border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
       ),
-      child: Text("Finish: $route", style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.gps_fixed, color: Colors.greenAccent, size: 16),
+          const SizedBox(width: 8),
+          Text(route, style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 16)),
+        ],
+      ),
     );
   }
 

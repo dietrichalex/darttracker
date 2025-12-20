@@ -16,7 +16,7 @@ class SetupScreen extends StatefulWidget {
 class _SetupScreenState extends State<SetupScreen> {
   // Config Defaults
   int sets = 1;
-  int legs = 3;
+  int legs = 1;
   int startScore = 501;
   MatchMode mode = MatchMode.bestOf; // Default mode
 
@@ -87,7 +87,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text("Leg Mode:", style: TextStyle(fontSize: 16)),
+                    const Text("Match Mode:", style: TextStyle(fontSize: 16)),
                     DropdownButton<MatchMode>(
                       value: mode,
                       dropdownColor: Colors.grey[900],
@@ -100,9 +100,17 @@ class _SetupScreenState extends State<SetupScreen> {
                   ],
                 ),
                 
-                _buildCounter("Sets", sets, (val) => setState(() => sets = val)),
-                // DYNAMIC LABEL based on mode
-                _buildCounter(mode == MatchMode.bestOf ? "Legs (Best Of)" : "Legs (Target)", legs, (val) => setState(() => legs = val)),
+                // DYNAMIC LABELS FOR BOTH
+                _buildCounter(
+                  mode == MatchMode.bestOf ? "Sets (Best Of)" : "Sets (Target)", 
+                  sets, 
+                  (val) => setState(() => sets = val)
+                ),
+                _buildCounter(
+                  mode == MatchMode.bestOf ? "Legs (Best Of)" : "Legs (Target)", 
+                  legs, 
+                  (val) => setState(() => legs = val)
+                ),
               ],
             ),
           ),
@@ -189,7 +197,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const Text("Start Score:", style: TextStyle(fontSize: 16)),
         DropdownButton<int>(
           value: startScore,
-          items: [301, 501, 701].map((int val) => DropdownMenuItem(value: val, child: Text("$val"))).toList(),
+          items: [101, 201, 301, 501].map((int val) => DropdownMenuItem(value: val, child: Text("$val"))).toList(),
           onChanged: (val) => setState(() => startScore = val!),
         ),
       ],

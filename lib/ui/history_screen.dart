@@ -92,13 +92,22 @@ class MatchDetailScreen extends StatelessWidget {
                             children: playersData.map((p) {
                               bool won = p['won'] == true;
                               return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 5.0),
+                                padding: const EdgeInsets.symmetric(vertical: 6.0),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(p['name'], style: TextStyle(fontWeight: FontWeight.bold, color: won ? Colors.amber : Colors.white)),
-                                    Text("Avg: ${p['avg']}"),
-                                    if (p['first9'] != null) Text("1st 9: ${p['first9']}", style: const TextStyle(color: Colors.grey)),
+                                    
+                                    // Detailed Stats Row
+                                    Row(
+                                      children: [
+                                        _statTag("Avg", p['avg']),
+                                        const SizedBox(width: 8),
+                                        if (p['first9'] != null) _statTag("1st9", p['first9']),
+                                        const SizedBox(width: 8),
+                                        if (p['co_percent'] != null) _statTag("CO%", "${p['co_percent']}%"),
+                                      ],
+                                    )
                                   ],
                                 ),
                               );
@@ -113,6 +122,15 @@ class MatchDetailScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _statTag(String label, String val) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text(val, style: const TextStyle(fontSize: 14, color: Colors.white)),
+      ],
     );
   }
 }
