@@ -1,11 +1,10 @@
 # darttracker
-## TODO's:
-+ stats are not working correctly (e.g. checkout percentage is always zero) in summary screen (live stats work)
-    + add per leg stats etc.
-+ implement correct checkout recommendations (table for common routes and algo for everything else)
-
-+ add a screen to actually display a game of the match history
-+ add name list to choose from
+## TODO's (ranked by importance):
 
 
-+ maybe add multiple gamemodes
+1. add more stats
+    + maybe stats per set
+    + maybe heatmap
+
+2. add scrolling to active player (annoying for more than 2 players)
+3. refine match history displaying
