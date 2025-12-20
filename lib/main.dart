@@ -8,7 +8,7 @@ void main() {
     ChangeNotifierProvider(
       create: (context) => MatchProvider(),
       child: MaterialApp(
-        title: 'Dart Master Pro',
+        title: 'darttracker',
         theme: ThemeData.dark().copyWith(
           scaffoldBackgroundColor: const Color(0xFF121212),
           primaryColor: Colors.greenAccent,
