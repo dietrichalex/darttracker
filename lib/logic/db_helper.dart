@@ -1,6 +1,5 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'dart:convert'; // For JSON encoding
 
 class DBHelper {
   static Database? _db;
@@ -8,9 +7,9 @@ class DBHelper {
   static Future<Database> get database async {
     if (_db != null) return _db!;
     _db = await openDatabase(
-      join(await getDatabasesPath(), 'darts_pro_final.db'), // New DB name to force refresh
+      join(await getDatabasesPath(), 'darts_pro_final.db'),
       onCreate: (db, version) async {
-        // Table for Match History (Now with details column)
+        // Table for Match History
         await db.execute(
           "CREATE TABLE matches(id INTEGER PRIMARY KEY, winner TEXT, avg REAL, date TEXT, details TEXT)",
         );
@@ -28,7 +27,7 @@ class DBHelper {
   static Future<int> addPlayer(String name) async {
     final db = await database;
     return await db.insert('saved_players', {'name': name}, 
-      conflictAlgorithm: ConflictAlgorithm.ignore); // Ignore if already exists
+      conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   static Future<List<String>> getPlayers() async {

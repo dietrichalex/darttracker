@@ -15,9 +15,6 @@ class MatchConfig {
     required this.startingScore,
   });
 
-  // LOGIC:
-  // First to 5 -> Target is 5.
-  // Best of 5 -> Target is 3 (Floor(5/2) + 1).
 
   int get legsNeededToWin {
     if (mode == MatchMode.firstTo) return legsToWinSet;

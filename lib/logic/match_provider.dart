@@ -54,9 +54,8 @@ class MatchProvider with ChangeNotifier {
     int scoreRemaining = scoreBefore - scoreThisDart;
 
     // --- CHECKOUT STATS LOGIC ---
-    // We check if the score was finishable with 3 darts (theoretical max) 
+    // check if the score was finishable with 3 darts
     // to determine if a "0" counts as a missed double.
-    // We use '3' here because we are defining the "State of the board", not the user's current hand.
     bool isFinishable = CheckoutLogic.getRecommendation(scoreBefore, 3).isNotEmpty;
     
     bool isZeroInput = (val == 0);
@@ -113,10 +112,10 @@ class MatchProvider with ChangeNotifier {
     // 1. CHECK SET WIN
     if (winner.legsWon >= config.legsNeededToWin) {
       winner.setsWon++;
-      for (var pl in players) pl.legsWon = 0; // Reset legs for next set
+      for (var pl in players) pl.legsWon = 0;
     }
 
-    // 2. CHECK MATCH WIN (Updated to use setsNeededToWin)
+    // 2. CHECK MATCH WIN
     if (winner.setsWon >= config.setsNeededToWin) {
       await _saveAndExit(winner, context);
     } else {
@@ -171,7 +170,7 @@ class MatchProvider with ChangeNotifier {
 
     final lastThrow = globalHistory.removeLast();
     
-    // REVERSE CHECKOUT STATS logic using the new method
+    // REVERSE CHECKOUT STATS
     bool wasFinishable = CheckoutLogic.getRecommendation(lastThrow.scoreBefore, 3).isNotEmpty;
     bool wasZeroInput = (lastThrow.value == 0);
     bool wasBustOrWin = ((lastThrow.scoreBefore - lastThrow.total) <= 1);
