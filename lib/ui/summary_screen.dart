@@ -4,19 +4,12 @@ import 'setup_screen.dart';
 
 class SummaryScreen extends StatelessWidget {
   final List<Player> players;
-  
-  // --- FIX: Add this variable and update the constructor ---
-  final List<String> legLog; 
+  final List<String> legLog;
 
-  const SummaryScreen({
-    super.key, 
-    required this.players,
-    this.legLog = const [], // Default to empty list if not provided
-  });
+  const SummaryScreen({super.key, required this.players, this.legLog = const []});
 
   @override
   Widget build(BuildContext context) {
-    // Determine winner based on sets won
     final winner = players.reduce((a, b) => a.setsWon > b.setsWon ? a : b);
 
     return Scaffold(
@@ -27,12 +20,10 @@ class SummaryScreen extends StatelessWidget {
           children: [
             const SizedBox(height: 20),
             const Icon(Icons.emoji_events, size: 80, color: Colors.amber),
-            const SizedBox(height: 10),
-            Text("WINNER: ${winner.name}", 
-              style: const TextStyle(fontSize: 28, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+            Text("WINNER: ${winner.name}", style: const TextStyle(fontSize: 28, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
             
-            // --- 1. OVERALL MATCH STATISTICS ---
+            // FULL STATS TABLE
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
@@ -44,7 +35,9 @@ class SummaryScreen extends StatelessWidget {
                 ],
                 rows: [
                   _buildRow("3-Dart Avg", players.map((p) => p.average.toStringAsFixed(1)).toList()),
+                  _buildRow("First 9 Avg", players.map((p) => p.firstNineAverage.toStringAsFixed(1)).toList()),
                   _buildRow("Checkout %", players.map((p) => "${p.checkoutPercentage.toStringAsFixed(1)}%").toList()),
+                  _buildRow("Best Leg", players.map((p) => "${p.bestLeg} darts").toList()),
                   _buildRow("Total Legs", players.map((p) => "${p.totalLegsWon}").toList()),
                   _buildRow("100+", players.map((p) => "${p.countScore(100, 140)}").toList()),
                   _buildRow("140+", players.map((p) => "${p.countScore(140, 180)}").toList()),
@@ -52,13 +45,11 @@ class SummaryScreen extends StatelessWidget {
                 ],
               ),
             ),
-
+            
             const SizedBox(height: 30),
-            const Divider(color: Colors.white24),
-            const Text("Per-Leg Analysis", style: TextStyle(fontSize: 18, color: Colors.greenAccent, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-
-            // --- 2. DETAILED LEG HISTORY (Using legLog & LegStat) ---
+            const Text("Per-Leg Analysis", style: TextStyle(fontSize: 18, color: Colors.greenAccent)),
+            
+            // PER LEG LIST
             if (players.isNotEmpty && players[0].legStats.isNotEmpty)
               ListView.builder(
                 shrinkWrap: true,
@@ -69,28 +60,22 @@ class SummaryScreen extends StatelessWidget {
                     color: Colors.white10,
                     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     child: ExpansionTile(
-                      leading: Text("Leg ${i + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-                      title: Text(
-                        // If legLog has data, use it, otherwise generic text
-                        i < legLog.length ? legLog[i].replaceAll("Leg ${i+1}: ", "") : "Detail",
-                        style: const TextStyle(color: Colors.white70, fontSize: 14),
-                      ),
+                      leading: Text("Leg ${i+1}", style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                      title: Text(i < legLog.length ? legLog[i].replaceAll("Leg ${i+1}: ", "") : ""),
                       children: [
                         Padding(
                           padding: const EdgeInsets.all(16.0),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: players.map((p) {
-                              // Guard against index range errors
                               if (i >= p.legStats.length) return const SizedBox();
                               final stats = p.legStats[i];
                               return Column(
                                 children: [
-                                  Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amber)),
+                                  Text(p.name, style: const TextStyle(color: Colors.amber)),
                                   Text("Avg: ${stats.average.toStringAsFixed(1)}", style: const TextStyle(color: Colors.white)),
-                                  Text("Darts: ${stats.dartsThrown}", style: const TextStyle(color: Colors.grey)),
-                                  if (stats.won) 
-                                    const Text("WINNER", style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                                  Text("1st 9: ${stats.firstNineAvg.toStringAsFixed(1)}", style: const TextStyle(color: Colors.grey)),
+                                  if (stats.won) const Text("WINNER", style: TextStyle(color: Colors.greenAccent, fontSize: 10)),
                                 ],
                               );
                             }).toList(),
@@ -100,32 +85,15 @@ class SummaryScreen extends StatelessWidget {
                     ),
                   );
                 },
-              )
-            else 
-              const Padding(
-                padding: EdgeInsets.all(20),
-                child: Text("No leg details recorded.", style: TextStyle(color: Colors.grey)),
               ),
-            
-            const SizedBox(height: 40),
 
-            // --- 3. NAVIGATION BUTTON ---
             Padding(
               padding: const EdgeInsets.all(30.0),
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.greenAccent, 
-                  foregroundColor: Colors.black, 
-                  minimumSize: const Size(double.infinity, 50)
-                ),
-                onPressed: () {
-                  // Navigate safely back to setup
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (c) => const SetupScreen()), 
-                    (route) => false
-                  );
-                },
-                child: const Text("START NEW MATCH", style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black, minimumSize: const Size(double.infinity, 50)),
+                onPressed: () => Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (c) => const SetupScreen()), (route) => false),
+                child: const Text("NEW MATCH"),
               ),
             ),
           ],

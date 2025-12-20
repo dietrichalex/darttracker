@@ -14,14 +14,15 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
-  // Config
+  // Config Defaults
   int sets = 1;
-  int legs = 1;
+  int legs = 3;
   int startScore = 501;
+  MatchMode mode = MatchMode.bestOf; // Default mode
 
-  // Player Selection Logic
-  List<String> _roster = []; // All saved players
-  final List<String> _selectedPlayers = []; // Who is playing NOW
+  // Roster
+  List<String> _roster = [];
+  final List<String> _selectedPlayers = [];
   final TextEditingController _nameController = TextEditingController();
 
   @override
@@ -32,9 +33,7 @@ class _SetupScreenState extends State<SetupScreen> {
 
   void _loadRoster() async {
     final list = await DBHelper.getPlayers();
-    setState(() {
-      _roster = list;
-    });
+    setState(() => _roster = list);
   }
 
   void _addPlayerToRoster() async {
@@ -47,9 +46,7 @@ class _SetupScreenState extends State<SetupScreen> {
 
   void _deletePlayer(String name) async {
     await DBHelper.deletePlayer(name);
-    setState(() {
-      _selectedPlayers.remove(name);
-    });
+    setState(() => _selectedPlayers.remove(name));
     _loadRoster();
   }
 
@@ -77,7 +74,7 @@ class _SetupScreenState extends State<SetupScreen> {
       ),
       body: Column(
         children: [
-          // 1. GAME SETTINGS
+          // SETTINGS PANEL
           Container(
             padding: const EdgeInsets.all(20),
             color: Colors.white.withOpacity(0.05),
@@ -85,13 +82,32 @@ class _SetupScreenState extends State<SetupScreen> {
               children: [
                 _buildScorePicker(),
                 const SizedBox(height: 10),
+                
+                // MODE SELECTOR
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("Leg Mode:", style: TextStyle(fontSize: 16)),
+                    DropdownButton<MatchMode>(
+                      value: mode,
+                      dropdownColor: Colors.grey[900],
+                      items: const [
+                        DropdownMenuItem(value: MatchMode.bestOf, child: Text("Best of")),
+                        DropdownMenuItem(value: MatchMode.firstTo, child: Text("First to")),
+                      ],
+                      onChanged: (val) => setState(() => mode = val!),
+                    ),
+                  ],
+                ),
+                
                 _buildCounter("Sets", sets, (val) => setState(() => sets = val)),
-                _buildCounter("Legs", legs, (val) => setState(() => legs = val)),
+                // DYNAMIC LABEL based on mode
+                _buildCounter(mode == MatchMode.bestOf ? "Legs (Best Of)" : "Legs (Target)", legs, (val) => setState(() => legs = val)),
               ],
             ),
           ),
 
-          // 2. PLAYER ROSTER
+          // PLAYER LIST
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(20),
@@ -99,30 +115,20 @@ class _SetupScreenState extends State<SetupScreen> {
                 const Text("Select Players", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
                 
-                // Add New Player Field
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: _nameController,
-                        decoration: const InputDecoration(
-                          hintText: "Add friend's name",
-                          isDense: true,
-                          border: OutlineInputBorder(),
-                        ),
+                        decoration: const InputDecoration(hintText: "Add friend's name", isDense: true, border: OutlineInputBorder()),
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.add_circle, color: Colors.greenAccent),
-                      onPressed: _addPlayerToRoster,
-                    )
+                    IconButton(icon: const Icon(Icons.add_circle, color: Colors.greenAccent), onPressed: _addPlayerToRoster)
                   ],
                 ),
                 const SizedBox(height: 20),
 
-                // Roster List
-                if (_roster.isEmpty) 
-                  const Text("No players saved. Add some friends!", style: TextStyle(color: Colors.grey)),
+                if (_roster.isEmpty) const Text("No players saved.", style: TextStyle(color: Colors.grey)),
 
                 ..._roster.map((name) {
                   final isSelected = _selectedPlayers.contains(name);
@@ -131,15 +137,9 @@ class _SetupScreenState extends State<SetupScreen> {
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       onTap: () => _toggleSelection(name),
-                      leading: Icon(
-                        isSelected ? Icons.check_box : Icons.check_box_outline_blank,
-                        color: isSelected ? Colors.greenAccent : Colors.grey,
-                      ),
+                      leading: Icon(isSelected ? Icons.check_box : Icons.check_box_outline_blank, color: isSelected ? Colors.greenAccent : Colors.grey),
                       title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
-                        onPressed: () => _deletePlayer(name),
-                      ),
+                      trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20), onPressed: () => _deletePlayer(name)),
                     ),
                   );
                 }),
@@ -147,7 +147,7 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
           ),
 
-          // 3. START BUTTON
+          // START BUTTON
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(20.0),
@@ -157,13 +157,14 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
                   onPressed: () {
-                    if (_selectedPlayers.length < 1) {
+                    if (_selectedPlayers.isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Select at least 1 player")));
                       return;
                     }
 
                     final config = MatchConfig(
                       playerNames: _selectedPlayers,
+                      mode: mode,
                       setsToWin: sets,
                       legsToWinSet: legs,
                       startingScore: startScore,
@@ -188,7 +189,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const Text("Start Score:", style: TextStyle(fontSize: 16)),
         DropdownButton<int>(
           value: startScore,
-          items: [101, 201, 301, 501].map((int val) => DropdownMenuItem(value: val, child: Text("$val"))).toList(),
+          items: [301, 501, 701].map((int val) => DropdownMenuItem(value: val, child: Text("$val"))).toList(),
           onChanged: (val) => setState(() => startScore = val!),
         ),
       ],
