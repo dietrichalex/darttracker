@@ -3,7 +3,7 @@ class DartThrow {
   final int multiplier;
   final int scoreBefore;
   final int playerId;
-  final int legNumber; // NEW: Helps tracking turns/legs
+  final int legNumber;
 
   DartThrow({
     required this.value,

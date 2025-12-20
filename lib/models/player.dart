@@ -7,7 +7,7 @@ class LegStat {
   final int dartsThrown;
   final bool won;
   final double firstNineAvg; 
-  final int checkoutAttempts; // NEW: Attempts specific to this leg
+  final int checkoutAttempts;
 
   LegStat({
     required this.legIndex, 
@@ -18,10 +18,8 @@ class LegStat {
     required this.checkoutAttempts,
   });
 
-  // Helper to get % for this leg
   double get checkoutPercent {
     if (checkoutAttempts == 0) return 0.0;
-    // If you won, you hit 1 checkout. If you lost, you hit 0.
     return (won ? 1 : 0) / checkoutAttempts * 100;
   }
 }
@@ -80,8 +78,6 @@ class Player {
       first9 = (first9Total / (dartsToCount / 3));
     }
 
-    // Calculate Checkout Attempts for THIS LEG only
-    // Logic: Total Attempts - Attempts recorded in previous legs
     int previousLegAttempts = legStats.fold(0, (sum, l) => sum + l.checkoutAttempts);
     int attemptsThisLeg = checkoutAttempts - previousLegAttempts;
 
@@ -91,7 +87,7 @@ class Player {
       dartsThrown: legThrows.length,
       won: isWinner,
       firstNineAvg: first9,
-      checkoutAttempts: attemptsThisLeg, // NEW
+      checkoutAttempts: attemptsThisLeg,
     ));
     
     _historyIndexAtLegStart = history.length; 
