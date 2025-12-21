@@ -101,7 +101,7 @@ class _MatchScreenState extends State<MatchScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // LEFT: Name & Info
+              // LEFT SIDE: Name & Sets
               Expanded(
                 flex: 4,
                 child: Column(
@@ -124,29 +124,44 @@ class _MatchScreenState extends State<MatchScreen> {
                 ),
               ),
 
-              // RIGHT: Stats & Score
+              // RIGHT SIDE: Scores
               Expanded(
                 flex: 6,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    // TOP ROW: Average + Score
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
+                      crossAxisAlignment: CrossAxisAlignment.center, // Align center vertically
                       children: [
-                        Text("avg ${p.average.toStringAsFixed(1)}", 
-                          style: TextStyle(fontSize: 14, color: isActive ? Colors.grey : Colors.white24)
+                        // AVERAGE (Now separate and bigger)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            const Text("AVG", style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
+                            Text(p.average.toStringAsFixed(1), 
+                              style: TextStyle(
+                                fontSize: 24, // Increased size
+                                fontWeight: FontWeight.bold, 
+                                color: isActive ? Colors.white : Colors.white30 // Brighter when active
+                              )
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 20), // More space between Avg and Score
+                        
+                        // SCORE
                         Text("${p.currentScore}", 
                           style: const TextStyle(fontSize: 50, fontWeight: FontWeight.bold, color: Colors.greenAccent, height: 1.0)
                         ),
                       ],
                     ),
+                    
                     const SizedBox(height: 6),
                     
+                    // DARTS ROW
                     if (displayThrows.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -158,11 +173,10 @@ class _MatchScreenState extends State<MatchScreen> {
                           alignment: WrapAlignment.end,
                           spacing: 12,
                           children: displayThrows.map((t) {
-                            // --- COLOR LOGIC ---
+                            // Color Logic
                             Color c = Colors.white;
                             if (!isActive) c = c.withOpacity(0.7);
 
-                            // Check for Bust: Score Remaining <= 1 AND not a win
                             int rem = t.scoreBefore - t.total;
                             bool isWin = (rem == 0 && t.multiplier == 2);
                             bool isBust = (rem <= 1 && !isWin);
