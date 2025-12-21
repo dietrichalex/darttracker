@@ -17,6 +17,7 @@ class MatchProvider with ChangeNotifier {
   int currentDartCount = 0;
   int multiplier = 1;
   int currentLegNumber = 1;
+  int currentTurnIndex = 1;
 
   void setupMatch(MatchConfig newConfig) async {
     config = newConfig;
@@ -26,6 +27,7 @@ class MatchProvider with ChangeNotifier {
     currentPlayerIndex = 0;
     currentDartCount = 0;
     currentLegNumber = 1;
+    currentTurnIndex = 1; // Reset
     
     for (String name in config.playerNames) {
       await DBHelper.addPlayer(name);
@@ -36,10 +38,7 @@ class MatchProvider with ChangeNotifier {
   Player get activePlayer => players[currentPlayerIndex];
 
   List<DartThrow> get currentTurnDarts {
-    if (activePlayer.history.isEmpty || currentDartCount == 0) return [];
-    var recent = activePlayer.history.reversed.take(currentDartCount).toList();
-    if (recent.any((t) => t.legNumber != currentLegNumber)) return [];
-    return recent.reversed.toList();
+    return activePlayer.history.where((t) => t.turnIndex == currentTurnIndex).toList();
   }
 
   void setMultiplier(int m) {
@@ -53,11 +52,8 @@ class MatchProvider with ChangeNotifier {
     int scoreBefore = p.currentScore;
     int scoreRemaining = scoreBefore - scoreThisDart;
 
-    // --- CHECKOUT STATS LOGIC ---
-    // check if the score was finishable with 3 darts
-    // to determine if a "0" counts as a missed double.
+    // Checkout Stats
     bool isFinishable = CheckoutLogic.getRecommendation(scoreBefore, 3).isNotEmpty;
-    
     bool isZeroInput = (val == 0);
     bool isBustOrWin = (scoreRemaining <= 1); 
 
@@ -72,7 +68,8 @@ class MatchProvider with ChangeNotifier {
       multiplier: multiplier, 
       scoreBefore: scoreBefore, 
       playerId: currentPlayerIndex,
-      legNumber: currentLegNumber
+      legNumber: currentLegNumber,
+      turnIndex: currentTurnIndex // Assign current turn ID
     );
 
     if (scoreRemaining == 0 && multiplier == 2) {
@@ -83,6 +80,8 @@ class MatchProvider with ChangeNotifier {
     } 
     else if (scoreRemaining <= 1) {
       // BUST
+      p.history.add(t);     
+      globalHistory.add(t); 
       _endTurn(bust: true); 
     } 
     else {
@@ -109,19 +108,17 @@ class MatchProvider with ChangeNotifier {
     }
     currentLegNumber++;
 
-    // 1. CHECK SET WIN
     if (winner.legsWon >= config.legsNeededToWin) {
       winner.setsWon++;
-      for (var pl in players) pl.legsWon = 0;
+      for (var pl in players) pl.legsWon = 0; 
     }
 
-    // 2. CHECK MATCH WIN
     if (winner.setsWon >= config.setsNeededToWin) {
       await _saveAndExit(winner, context);
     } else {
-      // Setup next leg
       for (var pl in players) pl.currentScore = config.startingScore;
       currentDartCount = 0;
+      currentTurnIndex++; // Increment turn index for new leg start
       currentPlayerIndex = (currentLegNumber - 1) % players.length;
       notifyListeners();
     }
@@ -170,7 +167,6 @@ class MatchProvider with ChangeNotifier {
 
     final lastThrow = globalHistory.removeLast();
     
-    // REVERSE CHECKOUT STATS
     bool wasFinishable = CheckoutLogic.getRecommendation(lastThrow.scoreBefore, 3).isNotEmpty;
     bool wasZeroInput = (lastThrow.value == 0);
     bool wasBustOrWin = ((lastThrow.scoreBefore - lastThrow.total) <= 1);
@@ -182,30 +178,28 @@ class MatchProvider with ChangeNotifier {
     }
 
     currentPlayerIndex = lastThrow.playerId;
+    // Set turn index back to what the undone throw was
+    currentTurnIndex = lastThrow.turnIndex; 
+    
     players[currentPlayerIndex].currentScore = lastThrow.scoreBefore;
     players[currentPlayerIndex].history.removeLast();
     
-    int count = 0;
-    for (int i = globalHistory.length - 1; i >= 0; i--) {
-      if (globalHistory[i].playerId == currentPlayerIndex && 
-          globalHistory[i].legNumber == currentLegNumber) {
-        count++;
-        if (count == 3) break;
-      } else { break; }
-    }
-    currentDartCount = count % 3;
+    // Recalculate Dart Count based on this turn index
+    var turnDarts = players[currentPlayerIndex].history.where((t) => t.turnIndex == currentTurnIndex).toList();
+    currentDartCount = turnDarts.length;
+    
     notifyListeners();
   }
 
   void _endTurn({bool bust = false}) {
     if (bust) {
-      int dartsInThisVisit = currentDartCount + 1;
-      if (activePlayer.history.length >= dartsInThisVisit) {
-         var firstDart = activePlayer.history[activePlayer.history.length - dartsInThisVisit];
-         activePlayer.currentScore = firstDart.scoreBefore;
+      var turnDarts = activePlayer.history.where((t) => t.turnIndex == currentTurnIndex).toList();
+      if (turnDarts.isNotEmpty) {
+        activePlayer.currentScore = turnDarts.first.scoreBefore;
       }
     }
     currentDartCount = 0;
+    currentTurnIndex++;
     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
   }
 }

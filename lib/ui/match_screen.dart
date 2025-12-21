@@ -15,9 +15,7 @@ class MatchScreen extends StatefulWidget {
 class _MatchScreenState extends State<MatchScreen> {
   final ScrollController _scrollController = ScrollController();
   int _prevPlayerIndex = -1;
-  
-  // CONSTANT: Fixed height for each player card
-  final double _cardHeight = 130.0; 
+  final double _cardHeight = 140.0; 
 
   @override
   void didChangeDependencies() {
@@ -74,19 +72,20 @@ class _MatchScreenState extends State<MatchScreen> {
   Widget _buildScoreboard(MatchProvider match) {
     return ListView.builder(
       controller: _scrollController,
-      itemExtent: _cardHeight, 
+      itemExtent: _cardHeight,
       itemCount: match.players.length,
       itemBuilder: (context, index) {
         final p = match.players[index];
         bool isActive = match.currentPlayerIndex == index;
         
         List<DartThrow> displayThrows = [];
+        
         if (isActive) {
           displayThrows = match.currentTurnDarts;
         } else {
           if (p.history.isNotEmpty) {
-            int count = p.history.length >= 3 ? 3 : p.history.length;
-            displayThrows = p.history.reversed.take(count).toList().reversed.toList();
+            int lastTurnIdx = p.history.last.turnIndex;
+            displayThrows = p.history.where((t) => t.turnIndex == lastTurnIdx).toList();
           }
         }
 
@@ -102,7 +101,7 @@ class _MatchScreenState extends State<MatchScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // LEFT SIDE: Name & Stats
+              // LEFT: Name & Info
               Expanded(
                 flex: 4,
                 child: Column(
@@ -110,60 +109,76 @@ class _MatchScreenState extends State<MatchScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(p.name, 
-                      style: TextStyle(fontSize: 18, color: isActive ? Colors.white : Colors.grey, overflow: TextOverflow.ellipsis),
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: isActive ? Colors.white : Colors.grey, overflow: TextOverflow.ellipsis),
                       maxLines: 1,
                     ),
-                    const SizedBox(height: 4),
-                    Text("Avg: ${p.average.toStringAsFixed(1)}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                    Text("Sets: ${p.setsWon} Legs: ${p.legsWon}", style: const TextStyle(color: Colors.amber, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _infoBadge("SETS", "${p.setsWon}"),
+                        const SizedBox(width: 8),
+                        _infoBadge("LEGS", "${p.legsWon}"),
+                      ],
+                    )
                   ],
                 ),
               ),
 
-              // RIGHT SIDE: Score & Throws
+              // RIGHT: Stats & Score
               Expanded(
                 flex: 6,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Score
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text("${p.currentScore}", 
-                        style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.greenAccent)
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text("avg ${p.average.toStringAsFixed(1)}", 
+                          style: TextStyle(fontSize: 14, color: isActive ? Colors.grey : Colors.white24)
+                        ),
+                        const SizedBox(width: 12),
+                        Text("${p.currentScore}", 
+                          style: const TextStyle(fontSize: 50, fontWeight: FontWeight.bold, color: Colors.greenAccent, height: 1.0)
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: 6),
                     
-                    // Darts Display (Wrapped & Fitted)
                     if (displayThrows.isNotEmpty)
-                      Flexible( // Allows vertical shrinking if needed
-                        child: FittedBox( // Scales text down if it's too wide/tall
-                          fit: BoxFit.scaleDown,
-                          child: Container(
-                            margin: const EdgeInsets.only(top: 4),
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.black45,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            constraints: const BoxConstraints(maxWidth: 160), // Force wrap earlier
-                            child: Wrap(
-                              alignment: WrapAlignment.end,
-                              spacing: 8,
-                              runSpacing: 2,
-                              children: displayThrows.map((t) {
-                                return Text(
-                                  _formatDart(t),
-                                  style: TextStyle(
-                                    color: isActive ? Colors.white : Colors.grey, 
-                                    fontSize: 14, 
-                                    fontWeight: FontWeight.bold
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black45,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Wrap(
+                          alignment: WrapAlignment.end,
+                          spacing: 12,
+                          children: displayThrows.map((t) {
+                            // --- COLOR LOGIC ---
+                            Color c = Colors.white;
+                            if (!isActive) c = c.withOpacity(0.7);
+
+                            // Check for Bust: Score Remaining <= 1 AND not a win
+                            int rem = t.scoreBefore - t.total;
+                            bool isWin = (rem == 0 && t.multiplier == 2);
+                            bool isBust = (rem <= 1 && !isWin);
+
+                            if (isBust) {
+                              c = Colors.redAccent;
+                            } else {
+                              if (t.multiplier == 2) c = Colors.yellowAccent;
+                              if (t.multiplier == 3) c = Colors.amber;
+                            }
+
+                            return Text(
+                              _formatDart(t),
+                              style: TextStyle(color: c, fontSize: 20, fontWeight: FontWeight.bold),
+                            );
+                          }).toList(),
                         ),
                       ),
                   ],
@@ -173,6 +188,24 @@ class _MatchScreenState extends State<MatchScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _infoBadge(String label, String val) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white10,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: Colors.white24)
+      ),
+      child: Row(
+        children: [
+          Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          const SizedBox(width: 4),
+          Text(val, style: const TextStyle(fontSize: 14, color: Colors.amber, fontWeight: FontWeight.bold)),
+        ],
+      ),
     );
   }
 
