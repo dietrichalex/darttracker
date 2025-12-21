@@ -7,7 +7,7 @@ class LegStat {
   final int dartsThrown;
   final bool won;
   final double firstNineAvg; 
-  final int checkoutAttempts;
+  final int checkoutAttempts; 
 
   LegStat({
     required this.legIndex, 
@@ -42,8 +42,48 @@ class Player {
 
   double get average {
     if (history.isEmpty) return 0.0;
-    int total = history.fold(0, (sum, t) => sum + t.total);
-    return (total / (history.length / 3)); 
+    
+    int totalPoints = 0;
+    int totalDarts = 0;
+
+    // 1. Group darts by Turn Index to analyze them as "Visits"
+    List<DartThrow> currentBatch = [];
+    int currentBatchIndex = -1;
+
+    for (var t in history) {
+      if (t.turnIndex != currentBatchIndex) {
+        // New batch starting, process the old one (Previous batches are ALWAYS finalized)
+        if (currentBatch.isNotEmpty) {
+           for (var d in currentBatch) {
+             if (d.scoreCounted) totalPoints += d.total;
+             totalDarts++;
+           }
+        }
+        currentBatch = [t];
+        currentBatchIndex = t.turnIndex;
+      } else {
+        currentBatch.add(t);
+      }
+    }
+
+    // 2. Process the FINAL batch (The one currently happening or just finished)
+    if (currentBatch.isNotEmpty) {
+      bool isBust = currentBatch.any((t) => !t.scoreCounted);
+      bool isComplete = currentBatch.length == 3;
+      // If score is 0, this last turn MUST be the winning turn
+      bool isWin = (currentScore == 0); 
+
+      // Only count this last turn if it's "Done" (Stable Average Rule)
+      if (isBust || isComplete || isWin) {
+         for (var d in currentBatch) {
+             if (d.scoreCounted) totalPoints += d.total;
+             totalDarts++;
+         }
+      }
+    }
+
+    if (totalDarts == 0) return 0.0;
+    return totalPoints / (totalDarts / 3); 
   }
 
   double get checkoutPercentage {
@@ -67,15 +107,18 @@ class Player {
   void snapshotLegStats(int legIndex, bool isWinner, int startScore) {
     List<DartThrow> legThrows = history.sublist(_historyIndexAtLegStart);
     
-    int totalPoints = legThrows.fold(0, (sum, t) => sum + t.total);
+    // Calculate Leg Average
+    int totalPoints = legThrows.where((t) => t.scoreCounted).fold(0, (sum, t) => sum + t.total);
     double legAvg = legThrows.isEmpty ? 0.0 : (totalPoints / (legThrows.length / 3));
 
     // Calculate First 9 Avg
     double first9 = 0.0;
     if (legThrows.isNotEmpty) {
       int dartsToCount = min(9, legThrows.length);
-      int first9Total = legThrows.take(dartsToCount).fold(0, (sum, t) => sum + t.total);
-      first9 = (first9Total / (dartsToCount / 3));
+      int first9Points = legThrows.take(dartsToCount)
+          .where((t) => t.scoreCounted)
+          .fold(0, (sum, t) => sum + t.total);
+      first9 = (first9Points / (dartsToCount / 3));
     }
 
     int previousLegAttempts = legStats.fold(0, (sum, l) => sum + l.checkoutAttempts);
@@ -95,14 +138,42 @@ class Player {
 
   int countScore(int min, [int? max]) {
     int count = 0;
-    for (int i = 0; i <= history.length - 3; i += 3) {
-      int visitTotal = history[i].total + history[i+1].total + history[i+2].total;
-      if (max != null) {
-        if (visitTotal >= min && visitTotal < max) count++;
-      } else {
-        if (visitTotal >= min) count++;
+    
+    if (history.isEmpty) return 0;
+    
+    int currentTurn = history.first.turnIndex;
+    int currentTurnTotal = 0;
+    bool currentTurnValid = true;
+    
+    for (var t in history) {
+      if (t.turnIndex != currentTurn) {
+        // Evaluate previous turn
+        if (currentTurnValid) {
+           if (max != null) {
+             if (currentTurnTotal >= min && currentTurnTotal < max) count++;
+           } else {
+             if (currentTurnTotal >= min) count++;
+           }
+        }
+        // Reset
+        currentTurn = t.turnIndex;
+        currentTurnTotal = 0;
+        currentTurnValid = true;
       }
+      
+      if (!t.scoreCounted) currentTurnValid = false; 
+      currentTurnTotal += t.total;
     }
+    
+    // Evaluate last turn
+    if (currentTurnValid) {
+       if (max != null) {
+         if (currentTurnTotal >= min && currentTurnTotal < max) count++;
+       } else {
+         if (currentTurnTotal >= min) count++;
+       }
+    }
+    
     return count;
   }
 }

@@ -27,7 +27,7 @@ class MatchProvider with ChangeNotifier {
     currentPlayerIndex = 0;
     currentDartCount = 0;
     currentLegNumber = 1;
-    currentTurnIndex = 1; // Reset
+    currentTurnIndex = 1;
     
     for (String name in config.playerNames) {
       await DBHelper.addPlayer(name);
@@ -69,7 +69,8 @@ class MatchProvider with ChangeNotifier {
       scoreBefore: scoreBefore, 
       playerId: currentPlayerIndex,
       legNumber: currentLegNumber,
-      turnIndex: currentTurnIndex // Assign current turn ID
+      turnIndex: currentTurnIndex,
+      scoreCounted: true 
     );
 
     if (scoreRemaining == 0 && multiplier == 2) {
@@ -79,7 +80,7 @@ class MatchProvider with ChangeNotifier {
       await _finalizeLeg(p, context);
     } 
     else if (scoreRemaining <= 1) {
-      // BUST
+      // BUST (Strict Rule: Score returns to start of turn)
       p.history.add(t);     
       globalHistory.add(t); 
       _endTurn(bust: true); 
@@ -118,7 +119,7 @@ class MatchProvider with ChangeNotifier {
     } else {
       for (var pl in players) pl.currentScore = config.startingScore;
       currentDartCount = 0;
-      currentTurnIndex++; // Increment turn index for new leg start
+      currentTurnIndex++;
       currentPlayerIndex = (currentLegNumber - 1) % players.length;
       notifyListeners();
     }
@@ -178,13 +179,12 @@ class MatchProvider with ChangeNotifier {
     }
 
     currentPlayerIndex = lastThrow.playerId;
-    // Set turn index back to what the undone throw was
     currentTurnIndex = lastThrow.turnIndex; 
     
     players[currentPlayerIndex].currentScore = lastThrow.scoreBefore;
     players[currentPlayerIndex].history.removeLast();
     
-    // Recalculate Dart Count based on this turn index
+    // Recalculate Dart Count for UI
     var turnDarts = players[currentPlayerIndex].history.where((t) => t.turnIndex == currentTurnIndex).toList();
     currentDartCount = turnDarts.length;
     
@@ -193,13 +193,31 @@ class MatchProvider with ChangeNotifier {
 
   void _endTurn({bool bust = false}) {
     if (bust) {
+      // 1. Revert Score
       var turnDarts = activePlayer.history.where((t) => t.turnIndex == currentTurnIndex).toList();
       if (turnDarts.isNotEmpty) {
         activePlayer.currentScore = turnDarts.first.scoreBefore;
       }
+
+      // 2. Mark darts as INVALID (0 points) for stats
+      for (int i = 0; i < activePlayer.history.length; i++) {
+        if (activePlayer.history[i].turnIndex == currentTurnIndex) {
+          var old = activePlayer.history[i];
+          activePlayer.history[i] = DartThrow(
+            value: old.value,
+            multiplier: old.multiplier,
+            scoreBefore: old.scoreBefore,
+            playerId: old.playerId,
+            legNumber: old.legNumber,
+            turnIndex: old.turnIndex,
+            scoreCounted: false, // INVALIDATE
+          );
+        }
+      }
     }
+    
     currentDartCount = 0;
-    currentTurnIndex++;
+    currentTurnIndex++; 
     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
   }
 }
