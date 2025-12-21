@@ -48,7 +48,7 @@ class _MatchScreenState extends State<MatchScreen> {
     super.dispose();
   }
 
-  @override
+@override
   Widget build(BuildContext context) {
     final match = Provider.of<MatchProvider>(context);
 
@@ -66,10 +66,18 @@ class _MatchScreenState extends State<MatchScreen> {
       ),
       body: Column(
         children: [
+          // 1. Scoreboard takes all remaining space
           Expanded(child: _buildScoreboard(match)),
+          
+          // 2. Checkout Panel
           _buildCheckoutPanel(match),
           const SizedBox(height: 5),
+          
+          // 3. Keypad
           _buildKeypad(match, context),
+          
+          // 4. Empty space to push the keypad UP
+          const SizedBox(height: 20), 
         ],
       ),
     );
