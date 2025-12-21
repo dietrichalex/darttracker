@@ -5,8 +5,44 @@ import '../utils/checkout_logic.dart';
 import '../models/player.dart';
 import '../models/dart_throw.dart';
 
-class MatchScreen extends StatelessWidget {
+class MatchScreen extends StatefulWidget {
   const MatchScreen({super.key});
+
+  @override
+  State<MatchScreen> createState() => _MatchScreenState();
+}
+
+class _MatchScreenState extends State<MatchScreen> {
+  final ScrollController _scrollController = ScrollController();
+  int _prevPlayerIndex = -1;
+  
+  // CONSTANT: Fixed height for each player card
+  final double _cardHeight = 130.0; 
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final match = Provider.of<MatchProvider>(context);
+    
+    if (match.currentPlayerIndex != _prevPlayerIndex) {
+      _prevPlayerIndex = match.currentPlayerIndex;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            match.currentPlayerIndex * _cardHeight, 
+            duration: const Duration(milliseconds: 300), 
+            curve: Curves.easeOut
+          );
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,30 +73,27 @@ class MatchScreen extends StatelessWidget {
 
   Widget _buildScoreboard(MatchProvider match) {
     return ListView.builder(
+      controller: _scrollController,
+      itemExtent: _cardHeight, 
       itemCount: match.players.length,
       itemBuilder: (context, index) {
         final p = match.players[index];
         bool isActive = match.currentPlayerIndex == index;
         
-        // --- LOGIC FIX START ---
         List<DartThrow> displayThrows = [];
-        
         if (isActive) {
-          // If it's my turn, show what I've thrown so far (0, 1, or 2 darts)
           displayThrows = match.currentTurnDarts;
         } else {
-          // If it's NOT my turn, show the last 3 darts I threw
-          // This ensures the previous player's score stays visible
           if (p.history.isNotEmpty) {
             int count = p.history.length >= 3 ? 3 : p.history.length;
             displayThrows = p.history.reversed.take(count).toList().reversed.toList();
           }
         }
-        // --- LOGIC FIX END ---
 
         return Container(
+          height: _cardHeight,
           margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          padding: const EdgeInsets.all(15),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: isActive ? Colors.white.withOpacity(0.1) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
@@ -70,50 +103,71 @@ class MatchScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               // LEFT SIDE: Name & Stats
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(p.name, style: TextStyle(fontSize: 18, color: isActive ? Colors.white : Colors.grey)),
-                  const SizedBox(height: 4),
-                  Text("Avg: ${p.average.toStringAsFixed(1)}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                  Text("Sets: ${p.setsWon} Legs: ${p.legsWon}", style: const TextStyle(color: Colors.amber, fontSize: 12)),
-                ],
+              Expanded(
+                flex: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(p.name, 
+                      style: TextStyle(fontSize: 18, color: isActive ? Colors.white : Colors.grey, overflow: TextOverflow.ellipsis),
+                      maxLines: 1,
+                    ),
+                    const SizedBox(height: 4),
+                    Text("Avg: ${p.average.toStringAsFixed(1)}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    Text("Sets: ${p.setsWon} Legs: ${p.legsWon}", style: const TextStyle(color: Colors.amber, fontSize: 12)),
+                  ],
+                ),
               ),
-              
-              // RIGHT SIDE: Score & Throws Display
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text("${p.currentScore}", style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
-                  
-                  // Display Darts (Visible for both Active and Inactive now)
-                  if (displayThrows.isNotEmpty)
-                    Container(
-                      margin: const EdgeInsets.only(top: 5),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.black45,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: displayThrows.map((t) {
-                          return Padding(
-                            padding: const EdgeInsets.only(left: 8.0),
-                            child: Text(
-                              _formatDart(t),
-                              style: TextStyle(
-                                // Dim the text slightly if it's the inactive player
-                                color: isActive ? Colors.white : Colors.grey, 
-                                fontSize: 16, 
-                                fontWeight: FontWeight.bold
-                              ),
-                            ),
-                          );
-                        }).toList(),
+
+              // RIGHT SIDE: Score & Throws
+              Expanded(
+                flex: 6,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Score
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text("${p.currentScore}", 
+                        style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.greenAccent)
                       ),
                     ),
-                ],
+                    
+                    // Darts Display (Wrapped & Fitted)
+                    if (displayThrows.isNotEmpty)
+                      Flexible( // Allows vertical shrinking if needed
+                        child: FittedBox( // Scales text down if it's too wide/tall
+                          fit: BoxFit.scaleDown,
+                          child: Container(
+                            margin: const EdgeInsets.only(top: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.black45,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            constraints: const BoxConstraints(maxWidth: 160), // Force wrap earlier
+                            child: Wrap(
+                              alignment: WrapAlignment.end,
+                              spacing: 8,
+                              runSpacing: 2,
+                              children: displayThrows.map((t) {
+                                return Text(
+                                  _formatDart(t),
+                                  style: TextStyle(
+                                    color: isActive ? Colors.white : Colors.grey, 
+                                    fontSize: 14, 
+                                    fontWeight: FontWeight.bold
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -131,13 +185,9 @@ class MatchScreen extends StatelessWidget {
     return "$prefix${t.value}";
   }
 
- Widget _buildCheckoutPanel(MatchProvider match) {
+  Widget _buildCheckoutPanel(MatchProvider match) {
     final int score = match.activePlayer.currentScore;
-    
-    // CALCULATE DARTS REMAINING IN THIS TURN
     int dartsRemaining = 3 - match.currentDartCount;
-    
-    // Get recommendation based on ACTUAL darts left
     final String route = CheckoutLogic.getRecommendation(score, dartsRemaining);
 
     if (route.isEmpty) return const SizedBox(height: 50);
@@ -154,7 +204,12 @@ class MatchScreen extends StatelessWidget {
         children: [
           const Icon(Icons.gps_fixed, color: Colors.greenAccent, size: 16),
           const SizedBox(width: 8),
-          Text(route, style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 16)),
+          Flexible(
+            child: Text(route, 
+              style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 16),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
@@ -162,44 +217,55 @@ class MatchScreen extends StatelessWidget {
 
   Widget _buildKeypad(MatchProvider match, BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(5),
       color: Colors.black,
       child: Column(
         children: [
-          Row(
-            children: [
-              _btn("D", () => match.setMultiplier(2), color: Colors.orange, active: match.multiplier == 2),
-              _btn("T", () => match.setMultiplier(3), color: Colors.redAccent, active: match.multiplier == 3),
-              _btn("UNDO", () => match.undo(), color: Colors.blueGrey),
-            ],
-          ),
           Wrap(
             alignment: WrapAlignment.center,
-            children: List.generate(20, (i) => SizedBox(width: MediaQuery.of(context).size.width / 5 - 8, child: _btn("${i + 1}", () => match.handleInput(i + 1, context)))),
+            spacing: 2,
+            runSpacing: 2,
+            children: List.generate(20, (i) {
+               double w = (MediaQuery.of(context).size.width - 20) / 5; 
+               return SizedBox(
+                 width: w, 
+                 height: 50,
+                 child: _btn("${i + 1}", () => match.handleInput(i + 1, context))
+               );
+            }),
           ),
+          
+          const SizedBox(height: 5),
+
           Row(
             children: [
-              _btn("0", () => match.handleInput(0, context), color: Colors.grey),
-              _btn("25", () => match.handleInput(25, context), color: Colors.green),
+              Expanded(child: _btn("D", () => match.setMultiplier(2), color: Colors.orange, active: match.multiplier == 2)),
+              const SizedBox(width: 2),
+              Expanded(child: _btn("T", () => match.setMultiplier(3), color: Colors.redAccent, active: match.multiplier == 3)),
+              const SizedBox(width: 2),
+              Expanded(child: _btn("0", () => match.handleInput(0, context), color: Colors.grey[800])),
+              const SizedBox(width: 2),
+              Expanded(child: _btn("25", () => match.handleInput(25, context), color: Colors.green)),
+              const SizedBox(width: 2),
+              Expanded(child: _btn("UNDO", () => match.undo(), color: Colors.blueGrey)),
             ],
           ),
+          const SizedBox(height: 5),
         ],
       ),
     );
   }
 
   Widget _btn(String txt, VoidCallback tap, {Color? color, bool active = false}) {
-    return Padding(
-      padding: const EdgeInsets.all(2),
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: active ? Colors.white : (color ?? Colors.grey[900]),
-          foregroundColor: active ? Colors.black : Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 15),
-        ),
-        onPressed: tap,
-        child: Text(txt, style: const TextStyle(fontWeight: FontWeight.bold)),
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: active ? Colors.white : (color ?? Colors.grey[900]),
+        foregroundColor: active ? Colors.black : Colors.white,
+        padding: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
       ),
+      onPressed: tap,
+      child: Text(txt, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
     );
   }
 

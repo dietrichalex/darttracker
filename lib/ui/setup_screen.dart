@@ -14,13 +14,11 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
-  // Config Defaults
   int sets = 1;
   int legs = 1;
   int startScore = 501;
-  MatchMode mode = MatchMode.bestOf; // Default mode
+  MatchMode mode = MatchMode.bestOf;
 
-  // Roster
   List<String> _roster = [];
   final List<String> _selectedPlayers = [];
   final TextEditingController _nameController = TextEditingController();
@@ -63,6 +61,7 @@ class _SetupScreenState extends State<SetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true, // Vital for keyboard handling
       appBar: AppBar(
         title: const Text("Match Setup"),
         actions: [
@@ -74,7 +73,7 @@ class _SetupScreenState extends State<SetupScreen> {
       ),
       body: Column(
         children: [
-          // SETTINGS PANEL
+          // 1. SETTINGS PANEL (Fixed at top)
           Container(
             padding: const EdgeInsets.all(20),
             color: Colors.white.withOpacity(0.05),
@@ -82,8 +81,6 @@ class _SetupScreenState extends State<SetupScreen> {
               children: [
                 _buildScorePicker(),
                 const SizedBox(height: 10),
-                
-                // MODE SELECTOR
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -99,8 +96,6 @@ class _SetupScreenState extends State<SetupScreen> {
                     ),
                   ],
                 ),
-                
-                // DYNAMIC LABELS FOR BOTH
                 _buildCounter(
                   mode == MatchMode.bestOf ? "Sets (Best Of)" : "Sets (Target)", 
                   sets, 
@@ -115,14 +110,21 @@ class _SetupScreenState extends State<SetupScreen> {
             ),
           ),
 
-          // PLAYER LIST
+          // 2. PLAYER LIST (Scrollable, pushes up with keyboard)
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.all(20),
+              padding: EdgeInsets.only(
+                left: 20, 
+                right: 20, 
+                top: 20,
+                // Add bottom padding equal to keyboard height + extra space
+                bottom: MediaQuery.of(context).viewInsets.bottom + 80 
+              ),
               children: [
                 const Text("Select Players", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
                 
+                // Name Input
                 Row(
                   children: [
                     Expanded(
@@ -154,38 +156,36 @@ class _SetupScreenState extends State<SetupScreen> {
               ],
             ),
           ),
-
-          // START BUTTON
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
-                  onPressed: () {
-                    if (_selectedPlayers.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Select at least 1 player")));
-                      return;
-                    }
-
-                    final config = MatchConfig(
-                      playerNames: _selectedPlayers,
-                      mode: mode,
-                      setsToWin: sets,
-                      legsToWinSet: legs,
-                      startingScore: startScore,
-                    );
-                    Provider.of<MatchProvider>(context, listen: false).setupMatch(config);
-                    Navigator.push(context, MaterialPageRoute(builder: (c) => const MatchScreen()));
-                  },
-                  child: Text("START MATCH (${_selectedPlayers.length})", style: const TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ),
+        ],
+      ),
+      // Floating Action Button style start button to ensure it stays visible or use a bottom sheet
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.black),
+              onPressed: () {
+                if (_selectedPlayers.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Select at least 1 player")));
+                  return;
+                }
+                final config = MatchConfig(
+                  playerNames: _selectedPlayers,
+                  mode: mode,
+                  setsToWin: sets,
+                  legsToWinSet: legs,
+                  startingScore: startScore,
+                );
+                Provider.of<MatchProvider>(context, listen: false).setupMatch(config);
+                Navigator.push(context, MaterialPageRoute(builder: (c) => const MatchScreen()));
+              },
+              child: Text("START MATCH (${_selectedPlayers.length})", style: const TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -197,7 +197,7 @@ class _SetupScreenState extends State<SetupScreen> {
         const Text("Start Score:", style: TextStyle(fontSize: 16)),
         DropdownButton<int>(
           value: startScore,
-          items: [101, 201, 301, 501].map((int val) => DropdownMenuItem(value: val, child: Text("$val"))).toList(),
+          items: [101, 201, 301, 501, 701].map((int val) => DropdownMenuItem(value: val, child: Text("$val"))).toList(),
           onChanged: (val) => setState(() => startScore = val!),
         ),
       ],
