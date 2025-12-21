@@ -22,15 +22,21 @@ class _MatchScreenState extends State<MatchScreen> {
     super.didChangeDependencies();
     final match = Provider.of<MatchProvider>(context);
     
+    // Auto-scroll logic
     if (match.currentPlayerIndex != _prevPlayerIndex) {
       _prevPlayerIndex = match.currentPlayerIndex;
+      
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            match.currentPlayerIndex * _cardHeight, 
-            duration: const Duration(milliseconds: 300), 
-            curve: Curves.easeOut
-          );
+          // FIX: Only animate if the list is actually scrollable (maxScrollExtent > 0).
+          // This prevents the "jittery" animation when you only have 2 players that fit perfectly.
+          if (_scrollController.position.maxScrollExtent > 0) {
+            _scrollController.animateTo(
+              match.currentPlayerIndex * _cardHeight, 
+              duration: const Duration(milliseconds: 300), 
+              curve: Curves.easeOut
+            );
+          }
         }
       });
     }
@@ -78,11 +84,13 @@ class _MatchScreenState extends State<MatchScreen> {
         final p = match.players[index];
         bool isActive = match.currentPlayerIndex == index;
         
+        // --- DISPLAY LOGIC ---
         List<DartThrow> displayThrows = [];
         
         if (isActive) {
           displayThrows = match.currentTurnDarts;
         } else {
+          // If inactive, show darts from their LAST turn index
           if (p.history.isNotEmpty) {
             int lastTurnIdx = p.history.last.turnIndex;
             displayThrows = p.history.where((t) => t.turnIndex == lastTurnIdx).toList();
@@ -134,23 +142,23 @@ class _MatchScreenState extends State<MatchScreen> {
                     // TOP ROW: Average + Score
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
-                      crossAxisAlignment: CrossAxisAlignment.center, // Align center vertically
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // AVERAGE (Now separate and bigger)
+                        // AVERAGE (Bigger)
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             const Text("AVG", style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
                             Text(p.average.toStringAsFixed(1), 
                               style: TextStyle(
-                                fontSize: 24, // Increased size
+                                fontSize: 24, 
                                 fontWeight: FontWeight.bold, 
-                                color: isActive ? Colors.white : Colors.white30 // Brighter when active
+                                color: isActive ? Colors.white : Colors.white30
                               )
                             ),
                           ],
                         ),
-                        const SizedBox(width: 20), // More space between Avg and Score
+                        const SizedBox(width: 20),
                         
                         // SCORE
                         Text("${p.currentScore}", 
@@ -263,11 +271,16 @@ class _MatchScreenState extends State<MatchScreen> {
   }
 
   Widget _buildKeypad(MatchProvider match, BuildContext context) {
+    // UPDATED: Taller buttons to fill the screen
+    const double numberBtnHeight = 60.0; 
+    const double actionBtnHeight = 60.0;
+
     return Container(
       padding: const EdgeInsets.all(5),
       color: Colors.black,
       child: Column(
         children: [
+          // 1-20 GRID
           Wrap(
             alignment: WrapAlignment.center,
             spacing: 2,
@@ -276,7 +289,7 @@ class _MatchScreenState extends State<MatchScreen> {
                double w = (MediaQuery.of(context).size.width - 20) / 5; 
                return SizedBox(
                  width: w, 
-                 height: 50,
+                 height: numberBtnHeight, // Taller (65)
                  child: _btn("${i + 1}", () => match.handleInput(i + 1, context))
                );
             }),
@@ -284,18 +297,23 @@ class _MatchScreenState extends State<MatchScreen> {
           
           const SizedBox(height: 5),
 
-          Row(
-            children: [
-              Expanded(child: _btn("D", () => match.setMultiplier(2), color: Colors.orange, active: match.multiplier == 2)),
-              const SizedBox(width: 2),
-              Expanded(child: _btn("T", () => match.setMultiplier(3), color: Colors.redAccent, active: match.multiplier == 3)),
-              const SizedBox(width: 2),
-              Expanded(child: _btn("0", () => match.handleInput(0, context), color: Colors.grey[800])),
-              const SizedBox(width: 2),
-              Expanded(child: _btn("25", () => match.handleInput(25, context), color: Colors.green)),
-              const SizedBox(width: 2),
-              Expanded(child: _btn("UNDO", () => match.undo(), color: Colors.blueGrey)),
-            ],
+          // BOTTOM ROW
+          SizedBox(
+            height: actionBtnHeight, // Taller (60)
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch, // Fill height
+              children: [
+                Expanded(child: _btn("0", () => match.handleInput(0, context), color: Colors.grey[800])),
+                const SizedBox(width: 2),
+                Expanded(child: _btn("25", () => match.handleInput(25, context), color: Colors.green)),
+                const SizedBox(width: 2),
+                Expanded(child: _btn("D", () => match.setMultiplier(2), color: Colors.orange, active: match.multiplier == 2)),
+                const SizedBox(width: 2),
+                Expanded(child: _btn("T", () => match.setMultiplier(3), color: Colors.redAccent, active: match.multiplier == 3)),
+                const SizedBox(width: 2),
+                Expanded(child: _btn("UNDO", () => match.undo(), color: Colors.blueGrey)),
+              ],
+            ),
           ),
           const SizedBox(height: 5),
         ],
