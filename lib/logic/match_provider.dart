@@ -4,7 +4,6 @@ import '../models/player.dart';
 import '../models/dart_throw.dart';
 import '../models/match_config.dart';
 import '../ui/summary_screen.dart';
-import '../utils/checkout_logic.dart';
 import 'db_helper.dart';
 
 class MatchProvider with ChangeNotifier {
@@ -52,15 +51,14 @@ class MatchProvider with ChangeNotifier {
     int scoreBefore = p.currentScore;
     int scoreRemaining = scoreBefore - scoreThisDart;
 
-    // Checkout Stats
-    bool isFinishable = CheckoutLogic.getRecommendation(scoreBefore, 3).isNotEmpty;
-    bool isZeroInput = (val == 0);
-    bool isBustOrWin = (scoreRemaining <= 1); 
-
-    if (isFinishable) {
-       if (isZeroInput || isBustOrWin) {
-         p.checkoutAttempts++;
-       }
+    // --- IMPROVED CHECKOUT STATS LOGIC ---
+    // A "Checkout Attempt" is defined as any dart thrown when the score 
+    // is a valid "Double" target (Even number <= 40, or 50 for Bull).
+    // This captures missed doubles (e.g. hitting S20 when on 40), which the old logic missed.
+    bool isDoubleTarget = (scoreBefore <= 40 && scoreBefore % 2 == 0) || (scoreBefore == 50);
+    
+    if (isDoubleTarget) {
+      p.checkoutAttempts++;
     }
 
     final t = DartThrow(
@@ -80,7 +78,7 @@ class MatchProvider with ChangeNotifier {
       await _finalizeLeg(p, context);
     } 
     else if (scoreRemaining <= 1) {
-      // BUST (Strict Rule: Score returns to start of turn)
+      // BUST
       p.history.add(t);     
       globalHistory.add(t); 
       _endTurn(bust: true); 
@@ -168,14 +166,11 @@ class MatchProvider with ChangeNotifier {
 
     final lastThrow = globalHistory.removeLast();
     
-    bool wasFinishable = CheckoutLogic.getRecommendation(lastThrow.scoreBefore, 3).isNotEmpty;
-    bool wasZeroInput = (lastThrow.value == 0);
-    bool wasBustOrWin = ((lastThrow.scoreBefore - lastThrow.total) <= 1);
-
-    if (wasFinishable) {
-       if (wasZeroInput || wasBustOrWin) {
-         players[lastThrow.playerId].checkoutAttempts--;
-       }
+    // REVERSE NEW CHECKOUT LOGIC
+    bool wasDoubleTarget = (lastThrow.scoreBefore <= 40 && lastThrow.scoreBefore % 2 == 0) || (lastThrow.scoreBefore == 50);
+    
+    if (wasDoubleTarget) {
+      players[lastThrow.playerId].checkoutAttempts--;
     }
 
     currentPlayerIndex = lastThrow.playerId;
@@ -184,7 +179,6 @@ class MatchProvider with ChangeNotifier {
     players[currentPlayerIndex].currentScore = lastThrow.scoreBefore;
     players[currentPlayerIndex].history.removeLast();
     
-    // Recalculate Dart Count for UI
     var turnDarts = players[currentPlayerIndex].history.where((t) => t.turnIndex == currentTurnIndex).toList();
     currentDartCount = turnDarts.length;
     
@@ -193,13 +187,11 @@ class MatchProvider with ChangeNotifier {
 
   void _endTurn({bool bust = false}) {
     if (bust) {
-      // 1. Revert Score
       var turnDarts = activePlayer.history.where((t) => t.turnIndex == currentTurnIndex).toList();
       if (turnDarts.isNotEmpty) {
         activePlayer.currentScore = turnDarts.first.scoreBefore;
       }
 
-      // 2. Mark darts as INVALID (0 points) for stats
       for (int i = 0; i < activePlayer.history.length; i++) {
         if (activePlayer.history[i].turnIndex == currentTurnIndex) {
           var old = activePlayer.history[i];
@@ -210,7 +202,7 @@ class MatchProvider with ChangeNotifier {
             playerId: old.playerId,
             legNumber: old.legNumber,
             turnIndex: old.turnIndex,
-            scoreCounted: false, // INVALIDATE
+            scoreCounted: false,
           );
         }
       }
