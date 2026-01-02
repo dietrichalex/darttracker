@@ -6,6 +6,7 @@ class DartThrow {
   final int legNumber;
   final int turnIndex;
   final bool scoreCounted;
+  final bool isManual;
 
   DartThrow({
     required this.value,
@@ -15,6 +16,7 @@ class DartThrow {
     required this.legNumber,
     required this.turnIndex,
     this.scoreCounted = true,
+    this.isManual = false,
   });
 
   int get total => value * multiplier;

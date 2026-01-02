@@ -16,21 +16,28 @@ class MatchProvider with ChangeNotifier {
   int currentPlayerIndex = 0;
   int currentDartCount = 0;
   int multiplier = 1;
-  
-  // Logic tracking
-  int currentLegNumber = 1; // Global leg counter
-  int currentSetIndex = 0;  // 0-based set counter
-  int currentLegInSet = 1;  // 1-based leg counter for the current set
+  int currentLegNumber = 1;
+  int currentSetIndex = 0;
+  int currentLegInSet = 1;
   int currentTurnIndex = 1;
+
+  List<int> legPlacements = []; 
+  Player? matchWinner; 
+  
+  // Pauses game when someone finishes (only for 3+ players)
+  bool waitingForContinuation = false; 
 
   void setupMatch(MatchConfig newConfig) async {
     config = newConfig;
     players = config.playerNames.map((name) => Player(name)..currentScore = config.startingScore).toList();
     globalHistory = [];
     matchLog = [];
+    legPlacements = [];
+    matchWinner = null;
+    waitingForContinuation = false;
+    
     currentPlayerIndex = 0;
     currentDartCount = 0;
-    
     currentLegNumber = 1;
     currentSetIndex = 0;
     currentLegInSet = 1;
@@ -47,24 +54,70 @@ class MatchProvider with ChangeNotifier {
   List<DartThrow> get currentTurnDarts {
     return activePlayer.history.where((t) => t.turnIndex == currentTurnIndex).toList();
   }
+  
+  int get currentTurnScore {
+    return currentTurnDarts.fold(0, (sum, t) => sum + t.total);
+  }
 
   void setMultiplier(int m) {
     multiplier = (multiplier == m) ? 1 : m;
     notifyListeners();
   }
 
-  void handleInput(int val, BuildContext context) async {
-    // BUG FIX: Block Triple Bull (3 * 25 = 75 is invalid)
-    if (val == 25 && multiplier == 3) {
-      return; // Ignore invalid input
+  // --- MANUAL INPUT HANDLING ---
+  void handleManualInput(int totalScore, BuildContext context) {
+    if (totalScore > 180) return;
+
+    int scoreRemaining = activePlayer.currentScore - totalScore;
+    
+    bool isBust = (scoreRemaining <= 1 && scoreRemaining != 0); 
+
+    List<int> values = [totalScore, 0, 0];
+    
+    for (int i = 0; i < 3; i++) {
+      final t = DartThrow(
+        value: values[i], 
+        multiplier: 1, 
+        scoreBefore: activePlayer.currentScore, 
+        playerId: currentPlayerIndex,
+        legNumber: currentLegNumber,
+        turnIndex: currentTurnIndex,
+        // If it's a bust, points don't count for the average numerator
+        scoreCounted: !isBust, 
+        isManual: true 
+      );
+      
+      activePlayer.history.add(t);
+      globalHistory.add(t);
+      
+      // Only subtract score on the first virtual dart, IF it wasn't a bust
+      if (i == 0 && !isBust) {
+         activePlayer.currentScore -= totalScore;
+      }
     }
+
+    if (!isBust && scoreRemaining == 0) {
+      // CHECKOUT
+      activePlayer.checkoutAttempts++;
+      _handleCheckout(activePlayer, context);
+    } else if (isBust) { 
+      // BUST - End turn immediately
+      _endTurn(bust: true);
+    } else {
+      // NORMAL
+      _endTurn();
+    }
+    notifyListeners();
+  }
+
+  void handleInput(int val, BuildContext context) async {
+    if (val == 25 && multiplier == 3) return;
 
     Player p = activePlayer;
     int scoreThisDart = val * multiplier;
     int scoreBefore = p.currentScore;
     int scoreRemaining = scoreBefore - scoreThisDart;
 
-    // Checkout Stats Logic
     bool isDoubleTarget = (scoreBefore <= 40 && scoreBefore % 2 == 0) || (scoreBefore == 50);
     if (isDoubleTarget) {
       p.checkoutAttempts++;
@@ -77,35 +130,86 @@ class MatchProvider with ChangeNotifier {
       playerId: currentPlayerIndex,
       legNumber: currentLegNumber,
       turnIndex: currentTurnIndex,
-      scoreCounted: true 
+      scoreCounted: true,
+      isManual: false 
     );
 
     if (scoreRemaining == 0 && multiplier == 2) {
-      // WIN
       p.history.add(t);
       globalHistory.add(t);
-      await _finalizeLeg(p, context);
+      _handleCheckout(p, context);
     } 
     else if (scoreRemaining <= 1) {
-      // BUST
       p.history.add(t);     
       globalHistory.add(t); 
       _endTurn(bust: true); 
     } 
     else {
-      // NORMAL
       p.history.add(t);
       globalHistory.add(t);
       p.currentScore -= scoreThisDart;
       currentDartCount++;
       if (currentDartCount == 3) _endTurn();
     }
-    
     multiplier = 1;
     notifyListeners();
   }
 
-  Future<void> _finalizeLeg(Player winner, BuildContext context) async {
+  void _handleCheckout(Player p, BuildContext context) {
+    if (!legPlacements.contains(currentPlayerIndex)) {
+      legPlacements.add(currentPlayerIndex);
+    }
+    
+    if (legPlacements.length == 1 && players.length > 2) {
+      waitingForContinuation = true;
+      notifyListeners();
+      return; 
+    }
+
+    // Standard flow (2 players OR subsequent players in MP)
+    int playersRemaining = players.length - legPlacements.length;
+    
+    if (playersRemaining <= 1 || players.length == 1) {
+      _finalizeLeg(context);
+    } else {
+      currentDartCount = 0;
+      currentTurnIndex++;
+      _advanceToNextActivePlayer();
+      notifyListeners();
+    }
+  }
+
+  // CALLED BY UI: "End Leg/Match"
+  void stopLegNow(BuildContext context) {
+    waitingForContinuation = false;
+    _finalizeLeg(context);
+  }
+
+  // CALLED BY UI: "Continue" (Let others play)
+  void continueLeg(BuildContext context) {
+    waitingForContinuation = false;
+    int playersRemaining = players.length - legPlacements.length;
+    
+    if (playersRemaining <= 1 || players.length == 1) {
+      _finalizeLeg(context);
+    } else {
+      currentDartCount = 0;
+      currentTurnIndex++;
+      _advanceToNextActivePlayer();
+      notifyListeners();
+    }
+  }
+
+  void _advanceToNextActivePlayer() {
+    int attempts = 0;
+    do {
+      currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+      attempts++;
+    } while (legPlacements.contains(currentPlayerIndex) && attempts < players.length);
+  }
+
+  Future<void> _finalizeLeg(BuildContext context) async {
+    Player winner = players[legPlacements.first];
     winner.legsWon++;
     winner.totalLegsWon++;
     matchLog.add("Leg $currentLegNumber: Won by ${winner.name}");
@@ -117,34 +221,37 @@ class MatchProvider with ChangeNotifier {
     
     currentLegNumber++;
     currentLegInSet++;
+    legPlacements.clear();
 
     if (winner.legsWon >= config.legsNeededToWin) {
       winner.setsWon++;
-      // Reset for next set
       for (var pl in players) pl.legsWon = 0; 
       currentSetIndex++;
-      currentLegInSet = 1; // Reset leg count for new set
+      currentLegInSet = 1; 
     }
 
     if (winner.setsWon >= config.setsNeededToWin) {
-      await _saveAndExit(winner, context);
+      matchWinner = winner; 
+      notifyListeners();
     } else {
-      // Reset Board
       for (var pl in players) pl.currentScore = config.startingScore;
       currentDartCount = 0;
       currentTurnIndex++;
-
-      // BUG FIX: Set Rotation Logic
-      // 1. Who starts this Set? (Rotates: Set 1->P1, Set 2->P2...)
       int setStarterIndex = currentSetIndex % players.length;
-      
-      // 2. Who starts this Leg within the Set? (Rotates based on set starter)
-      // Leg 1: SetStarter, Leg 2: SetStarter + 1...
       int legStarterIndex = (setStarterIndex + (currentLegInSet - 1)) % players.length;
-
       currentPlayerIndex = legStarterIndex;
       notifyListeners();
     }
+  }
+
+  Future<void> confirmMatchEnd(BuildContext context) async {
+    if (matchWinner == null) return;
+    await _saveAndExit(matchWinner!, context);
+  }
+
+  void undoWin() {
+    matchWinner = null;
+    undo(); 
   }
 
   Future<void> _saveAndExit(Player winner, BuildContext context) async {
@@ -169,27 +276,17 @@ class MatchProvider with ChangeNotifier {
       fullHistory.add({'leg_number': i + 1, 'players': legPlayerStats});
     }
 
-    // BUG FIX: Accurate Match Average Calculation
-    // We sum ALL points and ALL darts from the history to get the pure mathematical average
-    // This avoids discrepancies between "Current State Avg" and "Match History Avg"
     double winnerTotalPoints = 0;
     int winnerTotalDarts = 0;
-    
     for (var t in winner.history) {
-      if (t.scoreCounted) {
-        winnerTotalPoints += t.total;
-      }
-      // Darts count even if score wasn't counted (busts)
+      if (t.scoreCounted) winnerTotalPoints += t.total;
       winnerTotalDarts++; 
     }
-    
-    double strictMatchAvg = (winnerTotalDarts == 0) 
-        ? 0.0 
-        : winnerTotalPoints / (winnerTotalDarts / 3);
+    double strictMatchAvg = (winnerTotalDarts == 0) ? 0.0 : winnerTotalPoints / (winnerTotalDarts / 3);
 
     await DBHelper.saveMatch({
       'winner': winner.name,
-      'avg': strictMatchAvg.toStringAsFixed(1), // Use the strict calc
+      'avg': strictMatchAvg.toStringAsFixed(1),
       'date': DateTime.now().toString().substring(0, 16),
       'details': jsonEncode(fullHistory),
     });
@@ -203,13 +300,20 @@ class MatchProvider with ChangeNotifier {
   }
 
   void undo() {
+    // Reset flags
+    waitingForContinuation = false;
+    matchWinner = null;
+
     if (globalHistory.isEmpty) return;
     if (globalHistory.last.legNumber != currentLegNumber) return;
 
     final lastThrow = globalHistory.removeLast();
     
+    if (legPlacements.contains(lastThrow.playerId)) {
+      legPlacements.remove(lastThrow.playerId);
+    }
+
     bool wasDoubleTarget = (lastThrow.scoreBefore <= 40 && lastThrow.scoreBefore % 2 == 0) || (lastThrow.scoreBefore == 50);
-    
     if (wasDoubleTarget) {
       players[lastThrow.playerId].checkoutAttempts--;
     }
@@ -220,6 +324,19 @@ class MatchProvider with ChangeNotifier {
     players[currentPlayerIndex].currentScore = lastThrow.scoreBefore;
     players[currentPlayerIndex].history.removeLast();
     
+    // Undo Manual Input (3 items)
+    if (players[currentPlayerIndex].history.isNotEmpty) {
+      var prev = players[currentPlayerIndex].history.last;
+      if (lastThrow.isManual && prev.turnIndex == currentTurnIndex && prev.value == 0) {
+        players[currentPlayerIndex].history.removeLast(); 
+        globalHistory.removeLast();
+        if (players[currentPlayerIndex].history.isNotEmpty) {
+           players[currentPlayerIndex].history.removeLast(); 
+           globalHistory.removeLast();
+        }
+      }
+    }
+
     var turnDarts = players[currentPlayerIndex].history.where((t) => t.turnIndex == currentTurnIndex).toList();
     currentDartCount = turnDarts.length;
     
@@ -232,7 +349,6 @@ class MatchProvider with ChangeNotifier {
       if (turnDarts.isNotEmpty) {
         activePlayer.currentScore = turnDarts.first.scoreBefore;
       }
-
       for (int i = 0; i < activePlayer.history.length; i++) {
         if (activePlayer.history[i].turnIndex == currentTurnIndex) {
           var old = activePlayer.history[i];
@@ -244,13 +360,13 @@ class MatchProvider with ChangeNotifier {
             legNumber: old.legNumber,
             turnIndex: old.turnIndex,
             scoreCounted: false,
+            isManual: old.isManual 
           );
         }
       }
     }
-    
     currentDartCount = 0;
     currentTurnIndex++; 
-    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+    _advanceToNextActivePlayer();
   }
 }

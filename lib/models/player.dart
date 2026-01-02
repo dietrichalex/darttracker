@@ -27,38 +27,45 @@ class LegStat {
 class Player {
   final String name;
   int currentScore = 501;
+  
+  // MATCH PROGRESS
   int legsWon = 0;
   int setsWon = 0;
+  int totalLegsWon = 0; // Cumulative across sets
   
-  // STATS
-  int totalLegsWon = 0;
+  // STATS TRACKING
   int checkoutAttempts = 0; 
   List<DartThrow> history = [];
   List<LegStat> legStats = [];
   
+  // INTERNAL HELPERS
   int _historyIndexAtLegStart = 0;
 
   Player(this.name);
 
+  // --- 1. STABLE MATCH AVERAGE ---
+  // Calculates average based only on COMPLETED turns (or busts/wins).
+  // Prevents the "20 score -> 60 avg" spike.
   double get average {
     if (history.isEmpty) return 0.0;
     
     int totalPoints = 0;
     int totalDarts = 0;
 
-    // 1. Group darts by Turn Index to analyze them as "Visits"
+    // Logic: Group darts by Turn Index
     List<DartThrow> currentBatch = [];
     int currentBatchIndex = -1;
 
     for (var t in history) {
       if (t.turnIndex != currentBatchIndex) {
-        // New batch starting, process the old one (Previous batches are ALWAYS finalized)
+        // Process the previous (completed) batch
         if (currentBatch.isNotEmpty) {
            for (var d in currentBatch) {
              if (d.scoreCounted) totalPoints += d.total;
              totalDarts++;
            }
         }
+        // Start new batch
         currentBatch = [t];
         currentBatchIndex = t.turnIndex;
       } else {
@@ -66,14 +73,13 @@ class Player {
       }
     }
 
-    // 2. Process the FINAL batch (The one currently happening or just finished)
+    // Process the FINAL batch (Current turn)
     if (currentBatch.isNotEmpty) {
       bool isBust = currentBatch.any((t) => !t.scoreCounted);
       bool isComplete = currentBatch.length == 3;
-      // If score is 0, this last turn MUST be the winning turn
       bool isWin = (currentScore == 0); 
 
-      // Only count this last turn if it's "Done" (Stable Average Rule)
+      // Only count if the turn is effectively "over"
       if (isBust || isComplete || isWin) {
          for (var d in currentBatch) {
              if (d.scoreCounted) totalPoints += d.total;
@@ -85,6 +91,82 @@ class Player {
     if (totalDarts == 0) return 0.0;
     return totalPoints / (totalDarts / 3); 
   }
+
+  // --- 2. CURRENT LEG AVERAGE ---
+  // Same logic as Match Average, but filtered for specific leg number
+  double currentLegAverage(int currentLegNum) {
+    var legDarts = history.where((t) => t.legNumber == currentLegNum).toList();
+    if (legDarts.isEmpty) return 0.0;
+    
+    int totalPoints = 0;
+    int totalDarts = 0;
+    
+    List<DartThrow> currentBatch = [];
+    int currentBatchIndex = -1;
+
+    for (var t in legDarts) {
+       if (t.turnIndex != currentBatchIndex) {
+          if (currentBatch.isNotEmpty) {
+             for (var d in currentBatch) {
+               if (d.scoreCounted) totalPoints += d.total;
+               totalDarts++;
+             }
+          }
+          currentBatch = [t];
+          currentBatchIndex = t.turnIndex;
+       } else {
+         currentBatch.add(t);
+       }
+    }
+
+    // Process final batch
+    if (currentBatch.isNotEmpty) {
+      bool isBust = currentBatch.any((t) => !t.scoreCounted);
+      bool isComplete = currentBatch.length == 3;
+      bool isWin = (currentScore == 0); 
+      if (isBust || isComplete || isWin) {
+         for (var d in currentBatch) {
+             if (d.scoreCounted) totalPoints += d.total;
+             totalDarts++;
+         }
+      }
+    }
+
+    if (totalDarts == 0) return 0.0;
+    return totalPoints / (totalDarts / 3);
+  }
+
+  // --- 3. LAST N SCORES ---
+  // Returns a list of strings like ["60", "100", "BUST", "45"]
+  List<String> getLastScores(int count) {
+    List<String> scores = [];
+    if (history.isEmpty) return [];
+
+    int currentTIdx = -1;
+    int currentSum = 0;
+    bool currentValid = true;
+
+    // Iterate backwards to get newest first
+    for (var t in history.reversed) {
+      if (t.turnIndex != currentTIdx) {
+        if (currentTIdx != -1) {
+          scores.add(currentValid ? "$currentSum" : "BUST");
+          if (scores.length >= count) return scores;
+        }
+        currentTIdx = t.turnIndex;
+        currentSum = 0;
+        currentValid = true;
+      }
+      
+      if (!t.scoreCounted) currentValid = false;
+      currentSum += t.total;
+    }
+    // Add the final one processed
+    scores.add(currentValid ? "$currentSum" : "BUST");
+    return scores;
+  }
+
+  // --- 4. STANDARD STATS GETTERS ---
 
   double get checkoutPercentage {
     if (checkoutAttempts == 0) return 0.0;
@@ -104,14 +186,16 @@ class Player {
     return total / legStats.length;
   }
 
+  // --- 5. LEG SNAPSHOT ---
+  // Called when a leg finishes to save permanent stats
   void snapshotLegStats(int legIndex, bool isWinner, int startScore) {
     List<DartThrow> legThrows = history.sublist(_historyIndexAtLegStart);
     
-    // Calculate Leg Average
+    // Calculate Average for this leg
     int totalPoints = legThrows.where((t) => t.scoreCounted).fold(0, (sum, t) => sum + t.total);
     double legAvg = legThrows.isEmpty ? 0.0 : (totalPoints / (legThrows.length / 3));
 
-    // Calculate First 9 Avg
+    // Calculate First 9 Average
     double first9 = 0.0;
     if (legThrows.isNotEmpty) {
       int dartsToCount = min(9, legThrows.length);
@@ -136,9 +220,9 @@ class Player {
     _historyIndexAtLegStart = history.length; 
   }
 
+  // --- 6. HIGH SCORES (100+, 140+, 180) ---
   int countScore(int min, [int? max]) {
     int count = 0;
-    
     if (history.isEmpty) return 0;
     
     int currentTurn = history.first.turnIndex;
@@ -161,7 +245,7 @@ class Player {
         currentTurnValid = true;
       }
       
-      if (!t.scoreCounted) currentTurnValid = false; 
+      if (!t.scoreCounted) currentTurnValid = false; // Bust voids the turn
       currentTurnTotal += t.total;
     }
     
