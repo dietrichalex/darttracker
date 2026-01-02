@@ -4,6 +4,7 @@ import '../models/player.dart';
 import '../models/dart_throw.dart';
 import '../models/match_config.dart';
 import '../ui/summary_screen.dart';
+import '../utils/checkout_logic.dart';
 import 'db_helper.dart';
 
 class MatchProvider with ChangeNotifier {
@@ -15,7 +16,11 @@ class MatchProvider with ChangeNotifier {
   int currentPlayerIndex = 0;
   int currentDartCount = 0;
   int multiplier = 1;
-  int currentLegNumber = 1;
+  
+  // Logic tracking
+  int currentLegNumber = 1; // Global leg counter
+  int currentSetIndex = 0;  // 0-based set counter
+  int currentLegInSet = 1;  // 1-based leg counter for the current set
   int currentTurnIndex = 1;
 
   void setupMatch(MatchConfig newConfig) async {
@@ -25,7 +30,10 @@ class MatchProvider with ChangeNotifier {
     matchLog = [];
     currentPlayerIndex = 0;
     currentDartCount = 0;
+    
     currentLegNumber = 1;
+    currentSetIndex = 0;
+    currentLegInSet = 1;
     currentTurnIndex = 1;
     
     for (String name in config.playerNames) {
@@ -46,17 +54,18 @@ class MatchProvider with ChangeNotifier {
   }
 
   void handleInput(int val, BuildContext context) async {
+    // BUG FIX: Block Triple Bull (3 * 25 = 75 is invalid)
+    if (val == 25 && multiplier == 3) {
+      return; // Ignore invalid input
+    }
+
     Player p = activePlayer;
     int scoreThisDart = val * multiplier;
     int scoreBefore = p.currentScore;
     int scoreRemaining = scoreBefore - scoreThisDart;
 
-    // --- IMPROVED CHECKOUT STATS LOGIC ---
-    // A "Checkout Attempt" is defined as any dart thrown when the score 
-    // is a valid "Double" target (Even number <= 40, or 50 for Bull).
-    // This captures missed doubles (e.g. hitting S20 when on 40), which the old logic missed.
+    // Checkout Stats Logic
     bool isDoubleTarget = (scoreBefore <= 40 && scoreBefore % 2 == 0) || (scoreBefore == 50);
-    
     if (isDoubleTarget) {
       p.checkoutAttempts++;
     }
@@ -105,20 +114,35 @@ class MatchProvider with ChangeNotifier {
       bool isWin = (p == winner);
       p.snapshotLegStats(currentLegNumber, isWin, config.startingScore);
     }
+    
     currentLegNumber++;
+    currentLegInSet++;
 
     if (winner.legsWon >= config.legsNeededToWin) {
       winner.setsWon++;
+      // Reset for next set
       for (var pl in players) pl.legsWon = 0; 
+      currentSetIndex++;
+      currentLegInSet = 1; // Reset leg count for new set
     }
 
     if (winner.setsWon >= config.setsNeededToWin) {
       await _saveAndExit(winner, context);
     } else {
+      // Reset Board
       for (var pl in players) pl.currentScore = config.startingScore;
       currentDartCount = 0;
       currentTurnIndex++;
-      currentPlayerIndex = (currentLegNumber - 1) % players.length;
+
+      // BUG FIX: Set Rotation Logic
+      // 1. Who starts this Set? (Rotates: Set 1->P1, Set 2->P2...)
+      int setStarterIndex = currentSetIndex % players.length;
+      
+      // 2. Who starts this Leg within the Set? (Rotates based on set starter)
+      // Leg 1: SetStarter, Leg 2: SetStarter + 1...
+      int legStarterIndex = (setStarterIndex + (currentLegInSet - 1)) % players.length;
+
+      currentPlayerIndex = legStarterIndex;
       notifyListeners();
     }
   }
@@ -145,9 +169,27 @@ class MatchProvider with ChangeNotifier {
       fullHistory.add({'leg_number': i + 1, 'players': legPlayerStats});
     }
 
+    // BUG FIX: Accurate Match Average Calculation
+    // We sum ALL points and ALL darts from the history to get the pure mathematical average
+    // This avoids discrepancies between "Current State Avg" and "Match History Avg"
+    double winnerTotalPoints = 0;
+    int winnerTotalDarts = 0;
+    
+    for (var t in winner.history) {
+      if (t.scoreCounted) {
+        winnerTotalPoints += t.total;
+      }
+      // Darts count even if score wasn't counted (busts)
+      winnerTotalDarts++; 
+    }
+    
+    double strictMatchAvg = (winnerTotalDarts == 0) 
+        ? 0.0 
+        : winnerTotalPoints / (winnerTotalDarts / 3);
+
     await DBHelper.saveMatch({
       'winner': winner.name,
-      'avg': winner.average.toStringAsFixed(1),
+      'avg': strictMatchAvg.toStringAsFixed(1), // Use the strict calc
       'date': DateTime.now().toString().substring(0, 16),
       'details': jsonEncode(fullHistory),
     });
@@ -166,7 +208,6 @@ class MatchProvider with ChangeNotifier {
 
     final lastThrow = globalHistory.removeLast();
     
-    // REVERSE NEW CHECKOUT LOGIC
     bool wasDoubleTarget = (lastThrow.scoreBefore <= 40 && lastThrow.scoreBefore % 2 == 0) || (lastThrow.scoreBefore == 50);
     
     if (wasDoubleTarget) {

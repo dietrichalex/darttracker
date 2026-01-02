@@ -4,51 +4,55 @@ import 'package:path/path.dart';
 class DBHelper {
   static Database? _db;
 
-  static Future<Database> get database async {
+  static Future<Database> _getDB() async {
     if (_db != null) return _db!;
+    String path = join(await getDatabasesPath(), 'dart_pro.db');
     _db = await openDatabase(
-      join(await getDatabasesPath(), 'darts_pro_final.db'),
-      onCreate: (db, version) async {
-        // Table for Match History
-        await db.execute(
-          "CREATE TABLE matches(id INTEGER PRIMARY KEY, winner TEXT, avg REAL, date TEXT, details TEXT)",
-        );
-        // Table for Player Roster
-        await db.execute(
-          "CREATE TABLE saved_players(id INTEGER PRIMARY KEY, name TEXT UNIQUE)",
-        );
-      },
+      path,
       version: 1,
+      onCreate: (db, version) async {
+        await db.execute('CREATE TABLE players(name TEXT PRIMARY KEY)');
+        await db.execute('CREATE TABLE matches(id INTEGER PRIMARY KEY AUTOINCREMENT, winner TEXT, avg TEXT, date TEXT, details TEXT)');
+      },
     );
     return _db!;
   }
 
-  // --- PLAYER ROSTER ---
-  static Future<int> addPlayer(String name) async {
-    final db = await database;
-    return await db.insert('saved_players', {'name': name}, 
-      conflictAlgorithm: ConflictAlgorithm.ignore);
+  // --- PLAYERS ---
+  static Future<void> addPlayer(String name) async {
+    final db = await _getDB();
+    await db.insert('players', {'name': name}, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   static Future<List<String>> getPlayers() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('saved_players', orderBy: "name ASC");
+    final db = await _getDB();
+    final List<Map<String, dynamic>> maps = await db.query('players');
     return List.generate(maps.length, (i) => maps[i]['name'] as String);
   }
 
   static Future<void> deletePlayer(String name) async {
-    final db = await database;
-    await db.delete('saved_players', where: 'name = ?', whereArgs: [name]);
+    final db = await _getDB();
+    await db.delete('players', where: 'name = ?', whereArgs: [name]);
   }
 
-  // --- MATCH HISTORY ---
-  static Future<int> saveMatch(Map<String, dynamic> matchData) async {
-    final db = await database;
-    return await db.insert('matches', matchData);
+  static Future<void> deleteAllPlayers() async {
+    final db = await _getDB();
+    await db.delete('players');
   }
 
-  static Future<List<Map<String, dynamic>>> getHistory() async {
-    final db = await database;
+  // --- MATCHES ---
+  static Future<void> saveMatch(Map<String, dynamic> matchData) async {
+    final db = await _getDB();
+    await db.insert('matches', matchData);
+  }
+
+  static Future<List<Map<String, dynamic>>> getMatches() async {
+    final db = await _getDB();
     return await db.query('matches', orderBy: 'id DESC');
+  }
+
+  static Future<void> deleteMatch(int id) async {
+    final db = await _getDB();
+    await db.delete('matches', where: 'id = ?', whereArgs: [id]);
   }
 }
